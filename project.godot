@@ -1,0 +1,9 @@
+; Motion Preview 독립 개발 프로젝트
+config_version=5
+
+[application]
+config/name="Motion Preview"
+config/features=PackedStringArray("4.7", "Forward Plus")
+
+[editor_plugins]
+enabled=PackedStringArray("res://addons/motion_preview/plugin.cfg")

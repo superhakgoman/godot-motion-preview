@@ -1,0 +1,13 @@
+.godot/
+.DS_Store
+__pycache__/
+*.pyc
+/.local/
+/AGENTS.md
+/.agents/
+/.codex/
+/tools/
+/output/
+/local_assets/
+/fixture_model.tscn
+/fixture_motion.tres
