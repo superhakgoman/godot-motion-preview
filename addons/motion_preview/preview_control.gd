@@ -83,7 +83,7 @@ func _build_ui() -> void:
 	clip_menu.item_selected.connect(func(_index: int): _play_clip())
 	add_child(clip_menu)
 	view_container = SubViewportContainer.new()
-	view_container.custom_minimum_size = Vector2(0, 260)
+	view_container.custom_minimum_size = Vector2(0, 320)
 	view_container.stretch = true
 	view_container.mouse_filter = Control.MOUSE_FILTER_STOP
 	view_container.gui_input.connect(_view_input)
@@ -91,7 +91,7 @@ func _build_ui() -> void:
 	view_container.mouse_exited.connect(func(): dragging = false)
 	add_child(view_container)
 	viewport = SubViewport.new()
-	viewport.size = Vector2i(320, 260)
+	viewport.size = Vector2i(320, 320)
 	viewport.own_world_3d = true
 	viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	view_container.add_child(viewport)
@@ -410,6 +410,9 @@ func _view_input(event: InputEvent) -> void:
 
 
 func _resize_view() -> void:
+	# 인스펙터 폭에 맞춰 높이도 조절해 인간형 모델의 표시 영역을 정사각형으로 유지한다.
+	if view_container.size.x > 0:
+		view_container.custom_minimum_size.y = view_container.size.x
 	# 컨테이너와 SubViewport의 크기가 반영된 다음 초기 구도를 보정한다.
 	_reframe_after_resize.call_deferred()
 

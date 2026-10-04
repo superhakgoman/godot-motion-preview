@@ -80,10 +80,10 @@ func check_resize_framing():
  preview.size.x = 900
  await frames(10)
  var wide_distance: float = preview.distance
- check(model_fits(preview), "넓어진 표시 영역에서 모델 전체 표시")
+ check(preview.viewport.size.x == preview.viewport.size.y and model_fits(preview), "넓어진 표시 영역은 정사각형이며 모델 전체 표시")
  preview.size.x = 320
  await frames(10)
- check(preview.distance > wide_distance and model_fits(preview), "좁아진 표시 영역에 맞춰 카메라 거리 보정")
+ check(preview.viewport.size.x == preview.viewport.size.y and is_equal_approx(preview.distance, wide_distance) and model_fits(preview), "좁아진 표시 영역도 정사각형이며 모델 구도 유지")
  await capture(preview, "narrow")
  var wheel := InputEventMouseButton.new()
  wheel.button_index = MOUSE_BUTTON_WHEEL_UP
