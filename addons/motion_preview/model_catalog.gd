@@ -1,7 +1,7 @@
 @tool
 extends RefCounted
 
-# 노드를 생성하지 않고 임포트된 씬 구조만 읽는다. 게임 스크립트는 실행하지 않는다.
+# SceneState에서 임포트된 씬 구조와 스크립트·골격·메시 정보를 읽어 모델 후보를 판별한다.
 static func inspect_scene(scene: PackedScene) -> Dictionary:
 	var info := {"safe": true, "skeletons": 0, "meshes": 0}
 	_inspect_state(scene.get_state(), info, 0)
@@ -38,7 +38,7 @@ static func is_model(scene: PackedScene) -> bool:
 
 
 static func collect(directory: EditorFileSystemDirectory, paths: PackedStringArray) -> void:
-	# EditorFileSystem의 색인을 사용하므로 .gdignore·임포트 제외 폴더는 탐색하지 않는다.
+	# EditorFileSystem의 색인에 등록된 씬에서 모델 후보를 수집한다.
 	for index in directory.get_file_count():
 		if directory.get_file_type(index) != "PackedScene":
 			continue

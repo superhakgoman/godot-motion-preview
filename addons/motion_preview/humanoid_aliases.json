@@ -1,0 +1,156 @@
+{
+  "version": 1,
+  "strip_tokens": [
+    "mixamorig",
+    "bip001",
+    "bip01"
+  ],
+  "strip_prefixes": [
+    "b_c_",
+    "b_"
+  ],
+  "separators": [
+    "_",
+    ".",
+    "-",
+    " "
+  ],
+  "sides": {
+    "Left": {
+      "words": [
+        "left"
+      ],
+      "prefixes": [
+        "l_"
+      ],
+      "infixes": [
+        "_l_"
+      ],
+      "suffixes": [
+        "_l",
+        ".l"
+      ]
+    },
+    "Right": {
+      "words": [
+        "right"
+      ],
+      "prefixes": [
+        "r_"
+      ],
+      "infixes": [
+        "_r_"
+      ],
+      "suffixes": [
+        "_r",
+        ".r"
+      ]
+    }
+  },
+  "aliases": {
+    "Hips": [
+      "hips",
+      "hip",
+      "pelvis"
+    ],
+    "Root": [
+      "root"
+    ],
+    "Spine": [
+      "spine",
+      "spine1",
+      "spine01"
+    ],
+    "Chest": [
+      "spine2",
+      "spine02",
+      "chest"
+    ],
+    "UpperChest": [
+      "spine3",
+      "spine03",
+      "upperchest"
+    ],
+    "Neck": [
+      "neck",
+      "neck1"
+    ],
+    "Head": [
+      "head"
+    ],
+    "Shoulder": [
+      "shoulder",
+      "clavicle"
+    ],
+    "UpperArm": [
+      "arm",
+      "upperarm"
+    ],
+    "LowerArm": [
+      "forearm",
+      "lowerarm"
+    ],
+    "Hand": [
+      "hand",
+      "wrist"
+    ],
+    "UpperLeg": [
+      "upleg",
+      "thigh",
+      "upperleg"
+    ],
+    "LowerLeg": [
+      "leg",
+      "calf",
+      "shin",
+      "lowerleg"
+    ],
+    "Foot": [
+      "foot",
+      "ankle"
+    ],
+    "Toes": [
+      "toebase",
+      "toe",
+      "ball"
+    ]
+  },
+  "sided_roles": [
+    "Shoulder",
+    "UpperArm",
+    "LowerArm",
+    "Hand",
+    "UpperLeg",
+    "LowerLeg",
+    "Foot",
+    "Toes"
+  ],
+  "fingers": {
+    "Thumb": [
+      "thumb"
+    ],
+    "Index": [
+      "index"
+    ],
+    "Middle": [
+      "middle"
+    ],
+    "Ring": [
+      "ring"
+    ],
+    "Little": [
+      "pinky",
+      "little"
+    ]
+  },
+  "finger_segments": [
+    "Proximal",
+    "Intermediate",
+    "Distal"
+  ],
+  "thumb_segments": [
+    "Metacarpal",
+    "Proximal",
+    "Distal"
+  ]
+}

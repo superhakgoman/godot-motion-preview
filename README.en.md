@@ -41,7 +41,9 @@ The plugin's controls currently use Korean labels; their meanings are provided b
 
 Models are discovered throughout the project. Imported FBX and GLB models, along with `.tscn` / `.scn` scenes, appear in the list if they have **no attached scripts, exactly one Skeleton3D, and an actual mesh**. Scenes with game scripts are excluded. To preview such a character, you must save a separate scene containing its appearance without scripts. No dedicated asset folder is required.
 
-Use models and motions intended for the same skeleton and rest pose. If a required bone is missing, the animation does not play and the missing bones are listed. Matching bone names alone is insufficient: automatic retargeting for different proportions, rest poses, or bone hierarchies is not provided.
+Humanoid motions can be automatically previewed on models with different skeletons. Models missing some bones play the applicable motion. A **yellow warning** identifies adjusted or omitted motion; a **red error** indicates that playback is unavailable.
+
+If automatic mapping fails, check `SkeletonProfileHumanoid` and `BoneMap` in Godot's Advanced Import Settings. Retargeting may require the original motion FBX, GLB or glTF.
 
 Bone position, rotation, and scale animations are played. Method calls, audio, and general property tracks are not played. Root motion can move a model outside the view; an in-place playback option is not provided. Original models, animations, and the scene currently being edited are left unchanged.
 
@@ -68,6 +70,7 @@ Prepare the Godot executable and Python 3, then run these commands from the repo
 ```sh
 godot --headless --path . --editor --quit
 python3 tests/check_motion_preview_portability.py godot
+godot --headless --path . --script tests/motion_preview_retarget.gd
 ```
 
 Failed checks produce a nonzero exit code. The log is written to `output/motion_preview_checks/portable_editor.log`.

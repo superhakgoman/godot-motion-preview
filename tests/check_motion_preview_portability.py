@@ -54,7 +54,7 @@ def main() -> None:
             if result.returncode or "ERROR:" in output or "WARNING:" in output:
                 print(output)
                 raise SystemExit(result.returncode or 1)
-        expected = 18 if args.render else 15
+        expected = 28 if args.render else 24
         marker = f"PORTABLE_EDITOR_COMPLETE checks={expected} failures=0"
         if marker not in outputs[-1]:
             print(outputs[-1])

@@ -14,6 +14,7 @@ var refresh_pending := false
 
 
 func _enter_tree() -> void:
+	preload("humanoid_mapping.gd").reload_rules()
 	selected_model = get_editor_interface().get_editor_settings().get_project_metadata(
 		META_SECTION, "model", "")
 	inspector = Inspector.new()
@@ -38,7 +39,7 @@ func _exit_tree() -> void:
 
 
 func _selection_changed() -> void:
-	# FBX 단일 클릭은 기본적으로 인스펙터를 열지 않으므로 명시적으로 연결한다.
+	# FBX 단일 클릭 시 선택한 라이브러리를 인스펙터 미리보기에 연결한다.
 	_preview_selected_file.call_deferred()
 
 

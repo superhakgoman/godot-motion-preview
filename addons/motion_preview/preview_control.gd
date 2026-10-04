@@ -25,6 +25,12 @@ var model: Node3D
 var skeleton: Skeleton3D
 var player: AnimationPlayer
 var binding_errors := {}
+var binding_warnings := {}
+var source_model: Node
+var source_skeleton: Skeleton3D
+var retarget_bridge: Node3D
+var native_clips := {}
+var native_active := false
 var playing := true
 var orbit := Vector2(0.0, 0.12)
 var distance := 3.0
@@ -36,6 +42,7 @@ var auto_frame := true
 func _ready() -> void:
 	_build_ui()
 	_build_world()
+	_load_source_skeleton()
 	library.changed.connect(_library_changed)
 	library.animation_added.connect(_clips_changed)
 	library.animation_removed.connect(_clips_changed)
@@ -45,6 +52,8 @@ func _ready() -> void:
 
 
 func _exit_tree() -> void:
+	if is_instance_valid(source_model):
+		source_model.free()
 	if is_instance_valid(library) and library.changed.is_connected(_library_changed):
 		library.changed.disconnect(_library_changed)
 		library.animation_added.disconnect(_clips_changed)
@@ -179,7 +188,7 @@ func update_models(paths: PackedStringArray) -> void:
 		_load_model(preferred_model)
 	else:
 		_clear_model()
-		status.text = "모델을 선택하세요." if paths.size() > 0 else "스켈레톤과 메시가 있는 모델이 없습니다."
+		_set_status("모델을 선택하세요." if paths.size() > 0 else "스켈레톤과 메시가 있는 모델이 없습니다.")
 
 
 func _model_chosen(index: int) -> void:
@@ -189,6 +198,10 @@ func _model_chosen(index: int) -> void:
 
 
 func _clear_model() -> void:
+	if is_instance_valid(retarget_bridge):
+		retarget_bridge.free()
+	retarget_bridge = null
+	native_active = false
 	if is_instance_valid(player):
 		player.free()
 	if is_instance_valid(model):
@@ -204,16 +217,16 @@ func _clear_model() -> void:
 func _load_model(path: String) -> void:
 	_clear_model()
 	if path.is_empty():
-		status.text = "모델을 선택하세요."
+		_set_status("모델을 선택하세요.")
 		return
 	var packed := ResourceLoader.load(path) as PackedScene
 	if packed == null or not Catalog.is_model(packed):
-		status.text = "스크립트 없는 모델과 스켈레톤 하나가 필요합니다."
+		_set_status("스크립트 없는 모델과 스켈레톤 하나가 필요합니다.", "error")
 		return
 	var instance := packed.instantiate()
 	if not instance is Node3D:
 		instance.free()
-		status.text = "Node3D 모델이 필요합니다."
+		_set_status("Node3D 모델이 필요합니다.", "error")
 		return
 	model = instance as Node3D
 	_prepare_nodes(model)
@@ -222,7 +235,7 @@ func _load_model(path: String) -> void:
 	var skeletons := Binding.skeletons_in(model)
 	if skeletons.size() != 1:
 		_clear_model()
-		status.text = "스켈레톤이 하나인 모델만 지원합니다."
+		_set_status("스켈레톤이 하나인 모델만 지원합니다.", "error")
 		return
 	skeleton = skeletons[0]
 	player = AnimationPlayer.new()
@@ -238,7 +251,7 @@ func _prepare_nodes(node: Node) -> void:
 	if node is MeshInstance3D:
 		node.set_meta("_motion_preview_material", node.material_override)
 	for child in node.get_children():
-		# 원본 씬의 재생기·물리·카메라·오디오는 미리보기에서 사용하지 않는다.
+		# 미리보기의 재생과 렌더링을 플러그인이 제어하도록 원본 제어 노드를 제거한다.
 		if (child is AnimationMixer or child is CollisionObject3D or child is Camera3D
 			or child is AudioStreamPlayer or child is AudioStreamPlayer3D or child is SkeletonModifier3D):
 			child.free()
@@ -260,11 +273,17 @@ func _apply_materials() -> void:
 
 
 func _bind_library() -> void:
-	player.stop()
+	player.stop(true)
 	if player.has_animation_library(&"preview"):
 		player.remove_animation_library(&"preview")
-	var result := Binding.bind(library, skeleton, model)
+	if is_instance_valid(retarget_bridge):
+		retarget_bridge.free()
+	retarget_bridge = null
+	var result := Binding.bind(library, skeleton, model, source_skeleton, Binding.Mapping.import_map(library.resource_path), Binding.Mapping.import_map(preferred_model))
+	retarget_bridge = result.bridge
+	native_clips = result.native_clips
 	binding_errors = result.errors
+	binding_warnings = result.warnings
 	player.add_animation_library(&"preview", result.library)
 	_play_clip()
 
@@ -274,27 +293,32 @@ func _play_clip() -> void:
 	timeline.editable = false
 	if not is_instance_valid(player):
 		return
-	player.stop()
+	player.stop(true)
+	native_active = false
+	if is_instance_valid(retarget_bridge):
+		retarget_bridge.reset()
 	skeleton.reset_bone_poses()
 	if clip_menu.item_count == 0:
-		status.text = "라이브러리에 모션이 없습니다."
+		_set_status("라이브러리에 모션이 없습니다.")
 		return
 	var clip := clip_menu.get_item_text(clip_menu.selected)
 	if binding_errors.has(clip):
-		status.text = binding_errors[clip]
+		_set_status(binding_errors[clip], "error")
 		return
 	var key := StringName("preview/" + clip)
 	if not player.has_animation(key):
 		return
+	native_active = native_clips.has(clip)
 	player.play(key)
 	player.advance(0.0)
+	_update_retarget()
 	timeline.max_value = maxf(player.current_animation_length, 0.001)
 	timeline.set_value_no_signal(0.0)
 	timeline.editable = true
 	playing = true
 	play_button.text = "일시정지"
 	play_button.disabled = false
-	status.text = "%.2f초 · 미리보기 반복 재생" % player.current_animation_length
+	_set_status(binding_warnings[clip], "warning") if binding_warnings.has(clip) else _set_status("%.2f초 · 미리보기 반복 재생" % player.current_animation_length)
 
 
 func _process(delta: float) -> void:
@@ -302,6 +326,7 @@ func _process(delta: float) -> void:
 		return
 	if playing:
 		player.advance(delta * speed.value)
+		_update_retarget()
 		timeline.set_value_no_signal(player.current_animation_position)
 
 
@@ -316,10 +341,12 @@ func _seek(time: float) -> void:
 	playing = false
 	play_button.text = "재생"
 	player.seek(time, true)
+	_update_retarget()
 
 
 func _library_changed() -> void:
 	_fill_clips()
+	_load_source_skeleton()
 	if is_instance_valid(player):
 		_bind_library()
 
@@ -390,3 +417,30 @@ func _resize_view() -> void:
 func _reframe_after_resize() -> void:
 	if is_instance_valid(camera) and auto_frame:
 		_frame_model()
+
+
+func _set_status(message: String, severity: String = "info") -> void:
+	status.text = message
+	status.remove_theme_color_override("font_color")
+	if severity == "error":
+		status.add_theme_color_override("font_color", Color(1.0, 0.35, 0.35))
+	elif severity == "warning":
+		status.add_theme_color_override("font_color", Color(1.0, 0.78, 0.3))
+
+
+func _load_source_skeleton() -> void:
+	if is_instance_valid(source_model):
+		source_model.free()
+	source_skeleton = null
+	source_model = Binding.source_scene(library)
+	if source_model != null:
+		var skeletons := Binding.skeletons_in(source_model)
+		if skeletons.size() == 1:
+			source_skeleton = skeletons[0]
+
+
+# 재생·시간 이동 직후 원본 골격 복사본에 적용된 자세를 엔진 보정에 넘긴다.
+# 일시정지 상태의 seek()에서도 호출하며, 완료 후 화면 모델 갱신은 bridge가 담당한다.
+func _update_retarget() -> void:
+	if native_active and is_instance_valid(retarget_bridge):
+		retarget_bridge.update()
