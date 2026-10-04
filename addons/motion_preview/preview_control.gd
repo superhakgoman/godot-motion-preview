@@ -3,6 +3,7 @@ extends VBoxContainer
 
 const Catalog = preload("model_catalog.gd")
 const Binding = preload("motion_binding.gd")
+const Bounds = preload("preview_bounds.gd")
 
 signal model_selected(path: String)
 signal refresh_requested
@@ -368,10 +369,13 @@ func _frame_model() -> void:
 		return
 	var bounds := AABB()
 	var found := false
-	for mesh in model.find_children("*", "MeshInstance3D", true, false):
+	var meshes := model.find_children("*", "MeshInstance3D", true, false)
+	if model is MeshInstance3D:
+		meshes.append(model)
+	for mesh in meshes:
 		if mesh.mesh == null or mesh.mesh.get_surface_count() == 0:
 			continue
-		var box: AABB = mesh.global_transform * mesh.get_aabb()
+		var box := Bounds.mesh_bounds(mesh)
 		bounds = bounds.merge(box) if found else box
 		found = true
 	if not found:
@@ -435,7 +439,7 @@ func _load_source_skeleton() -> void:
 	if is_instance_valid(source_model):
 		source_model.free()
 	source_skeleton = null
-	source_model = Binding.source_scene(library)
+	source_model = Binding.source_scene(library, model_paths)
 	if source_model != null:
 		var skeletons := Binding.skeletons_in(source_model)
 		if skeletons.size() == 1:

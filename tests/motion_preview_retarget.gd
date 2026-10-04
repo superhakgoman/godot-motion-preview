@@ -2,6 +2,7 @@ extends SceneTree
 
 const Binding = preload("res://addons/motion_preview/motion_binding.gd")
 const Mapping = preload("res://addons/motion_preview/humanoid_mapping.gd")
+const Bounds = preload("res://addons/motion_preview/preview_bounds.gd")
 var failures := 0
 var checks := 0
 
@@ -126,10 +127,101 @@ func check_structural_mapping() -> void:
 	check(not roles.has("LeftUpperArm") and not roles.has("LeftLowerArm"), "보조 본 때문에 대응이 모호하면 추론 생략")
 	model.free()
 	check(Mapping.rules.aliases.Hips.has("pelvis") and Mapping.role("thigh_r") == "RightUpperLeg", "JSON에서 별칭·좌우 표기 로딩")
+	check(Mapping.role("B-hips") == "Hips" and Mapping.role("B-upperArm.R") == "RightUpperArm", "HumanF 접두어·좌우 본 이름 대응")
+	check(Mapping.role("B-indexFinger01.R") == "RightIndexProximal" and Mapping.role("B_L_Toe0") == "LeftToes", "손가락·발끝 별칭 대응")
 	Mapping.rules.aliases.Hips.append("newpelvis")
 	check(Mapping.role("newpelvis") == "Hips", "알고리즘 수정 없이 별칭 데이터 확장")
 	Mapping.reload_rules()
 	check(Mapping.role("newpelvis").is_empty(), "JSON 재로딩은 메모리 규칙을 다시 읽음")
+
+func check_source_options() -> void:
+	var path := "res://output/motion_preview_checks/nodes_fixture.gltf"
+	var file := FileAccess.open(path, FileAccess.WRITE)
+	file.store_string(JSON.stringify({"asset": {"version": "2.0"}, "scene": 0,
+		"scenes": [{"nodes": [0]}], "nodes": [{"name": "Root", "children": [1]}, {"name": "Hips", "translation": [0, 1, 0]}]}))
+	file.close()
+	var config := ConfigFile.new()
+	var library := AnimationLibrary.new()
+	library.take_over_path(path)
+	for enabled in [true, false]:
+		config.set_value("params", "nodes/import_as_skeleton_bones", enabled)
+		config.save(path + ".import")
+		var scene := Binding.source_scene(library)
+		var count := Binding.skeletons_in(scene).size() if scene != null else -1
+		check(count == (1 if enabled else 0), "메시 없는 원본의 노드→본 임포트 설정 반영: " + str(enabled))
+		if scene != null:
+			scene.free()
+	config.set_value("params", "nodes/import_as_skeleton_bones", true)
+	config.save(path + ".import")
+	var paths := PackedStringArray()
+	for height in [2.0, 3.0]:
+		var model := Node3D.new()
+		model.name = "Reference"
+		var skeleton := Skeleton3D.new()
+		model.add_child(skeleton)
+		skeleton.owner = model
+		skeleton.add_bone("Root")
+		skeleton.add_bone("Hips")
+		skeleton.set_bone_parent(1, 0)
+		skeleton.set_bone_rest(1, Transform3D(Basis.IDENTITY, Vector3(0, height, 0)))
+		var mesh := MeshInstance3D.new()
+		mesh.mesh = BoxMesh.new()
+		model.add_child(mesh)
+		mesh.owner = model
+		var packed := PackedScene.new()
+		packed.pack(model)
+		var candidate_path := "res://output/motion_preview_checks/reference_%d.tscn" % int(height)
+		ResourceSaver.save(packed, candidate_path)
+		paths.append(candidate_path)
+		model.free()
+	var animation := Animation.new()
+	var track := animation.add_track(Animation.TYPE_ROTATION_3D)
+	animation.track_set_path(track, NodePath("Skeleton:Hips"))
+	animation.rotation_track_insert_key(track, 0, Quaternion.IDENTITY)
+	library.add_animation("move", animation)
+	var scene := Binding.source_scene(library, PackedStringArray([paths[0]]))
+	var skeleton := Binding.skeletons_in(scene)[0]
+	check(is_equal_approx(skeleton.get_bone_global_rest(skeleton.find_bone("Hips")).origin.y, 2.0), "유일한 같은 골격 모델에서 기준 자세 확보")
+	scene.free()
+	scene = Binding.source_scene(library, paths)
+	skeleton = Binding.skeletons_in(scene)[0]
+	check(is_equal_approx(skeleton.get_bone_global_rest(skeleton.find_bone("Hips")).origin.y, 1.0), "후보 기준 자세가 다르면 모션 원본 골격 유지")
+	scene.free()
+
+func check_skinned_bounds(root: Node3D) -> void:
+	var skeleton := Skeleton3D.new()
+	skeleton.name = "BoundsSkeleton"
+	skeleton.add_bone("Root")
+	var rest := Transform3D(Basis(Vector3.RIGHT, -PI / 2), Vector3(0, 2, 0))
+	skeleton.set_bone_rest(0, rest)
+	skeleton.reset_bone_poses()
+	root.add_child(skeleton)
+	var box := BoxMesh.new()
+	box.size = Vector3(1, 0.5, 3)
+	for influences in [4, 8]:
+		var arrays := box.get_mesh_arrays()
+		var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+		var bones := PackedInt32Array()
+		var weights := PackedFloat32Array()
+		for vertex in vertices.size():
+			for influence in influences:
+				bones.append(0)
+				weights.append(1.0 if influence == 0 else 0.0)
+		arrays[Mesh.ARRAY_BONES] = bones
+		arrays[Mesh.ARRAY_WEIGHTS] = weights
+		var mesh := MeshInstance3D.new()
+		mesh.mesh = ArrayMesh.new()
+		mesh.mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays, [], {}, Mesh.ARRAY_FLAG_USE_8_BONE_WEIGHTS if influences == 8 else 0)
+		var skin := Skin.new()
+		skin.add_named_bind("Root", Transform3D.IDENTITY)
+		mesh.skin = skin
+		mesh.skeleton = NodePath("../BoundsSkeleton")
+		root.add_child(mesh)
+		var actual := Bounds.mesh_bounds(mesh)
+		var expected := rest * box.get_aabb()
+		check(actual.position.is_equal_approx(expected.position) and actual.size.is_equal_approx(expected.size), "Skin으로 세워진 메시의 현재 범위: %d개 가중치" % influences)
+		mesh.free()
+	skeleton.free()
 
 func library_for(skeleton: Skeleton3D) -> AnimationLibrary:
 	var clip := Animation.new()
@@ -174,6 +266,8 @@ func run() -> void:
 	mixamo.free()
 	await check_partial_rigs(root, original, target)
 	check_structural_mapping()
+	check_source_options()
+	check_skinned_bounds(root)
 	var motion := library_for(original)
 	var roles := Mapping.for_skeleton(original)
 	check(Mapping.validate(original, roles).is_empty(), "엔진 프로필의 대응 본과 계층 검사")
