@@ -6,6 +6,12 @@
 
 Godot에서 애니메이션 라이브러리(`AnimationLibrary`)를 선택하면 인스펙터에서 3D 모델에 적용한 모션을 미리 보는 에디터 플러그인입니다. 게임을 실행하거나 미리보기 씬을 따로 만들지 않고 여러 모션을 확인할 수 있습니다. Godot 4.7 이상을 대상으로 합니다.
 
+| 손 흔들기 자세 | 걷기 자세 |
+|---|---|
+| ![손 흔들기 애니메이션을 확인하는 인스펙터](docs/images/motion-preview-wave.png) | ![걷기 애니메이션을 확인하는 인스펙터](docs/images/motion-preview-walk.png) |
+
+데모 모델을 사용한 실제 인스펙터 화면입니다. [전체 에디터 화면 보기](docs/images/motion-preview-editor.png)
+
 ## 게임 프로젝트에서 설치하고 사용하기
 
 ### 설치

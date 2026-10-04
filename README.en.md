@@ -6,6 +6,12 @@
 
 A Godot editor plugin that previews an animation library (`AnimationLibrary`) on a 3D model in the Inspector. Browse motions without running your game or creating a separate preview scene. Targets Godot 4.7 and later.
 
+| Wave pose | Walk pose |
+|---|---|
+| ![Inspector preview of a waving animation](docs/images/motion-preview-wave.png) | ![Inspector preview of a walking animation](docs/images/motion-preview-walk.png) |
+
+Actual Inspector captures using a model created for this demo. [View the full editor screenshot](docs/images/motion-preview-editor.png)
+
 ## Installing and using it in a game project
 
 ### Installation
