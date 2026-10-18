@@ -96,3 +96,15 @@ python3 release.py
 This creates `output/motion_preview-<version>.zip`. The ZIP contains only the plugin contents; the version is read from `addons/motion_preview/plugin.cfg`.
 
 Extract the ZIP and move the resulting `motion_preview` folder into your chosen Godot project's `addons/` folder. Check that the resulting path is `addons/motion_preview/plugin.cfg`, then enable the plugin. Disable the plugin or close the editor before replacing an existing installation.
+
+## Embedding the preview in another editor (1.2.0)
+
+See the [public API, adapter contract and 1.1.2 migration guide](addons/motion_preview/API.md). Embed the existing camera/playback/scrubbing implementation through methods and signals. A separate prepared-target boundary supports adapter-sanitized multi-skeleton appearances with existing engine RetargetModifier nodes, while preserving the general loader's safety policy.
+
+Run the generated-fixture API checks:
+
+```sh
+godot --headless --path . --quit-after 1200 --script tests/motion_preview_api.gd
+```
+
+See the [1.2.0 design and validation record](docs/1.2.0-api-release.md) (Korean).

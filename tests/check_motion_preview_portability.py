@@ -35,8 +35,8 @@ def main() -> None:
             '"res://addons/motion_preview/plugin.cfg", '
             '"res://addons/preview_probe/plugin.cfg")\n', encoding="utf-8")
         commands = [
-            [engine, "--headless", "--path", str(target), "--script", str(project / "tests/motion_preview_fixture.gd")],
-            [engine, *([] if args.render else ["--headless"]), "--path", str(target), "--editor",
+            [engine, "--headless", "--path", str(target), "--quit-after", "1200", "--script", str(project / "tests/motion_preview_fixture.gd")],
+            [engine, *([] if args.render else ["--headless"]), "--path", str(target), "--editor", "--quit-after", "1200",
              *(["--", "--capture-dir", str(log_path.parent)] if args.render else [])],
         ]
         for command in commands:

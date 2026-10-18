@@ -94,3 +94,15 @@ python3 release.py
 `output/motion_preview-<버전>.zip`이 생성됩니다. ZIP에는 플러그인 내용물만 들어 있으며, 버전은 `addons/motion_preview/plugin.cfg`에서 읽습니다.
 
 ZIP을 풀어 나온 `motion_preview` 폴더를 원하는 Godot 프로젝트의 `addons/` 아래로 옮깁니다. 최종 경로가 `addons/motion_preview/plugin.cfg`인지 확인하고 플러그인을 켭니다. 기존 설치를 교체할 때는 먼저 플러그인을 끄거나 에디터를 닫습니다.
+
+## 다른 편집기에 미리보기 삽입하기 (1.2.0)
+
+[공개 API·어댑터 계약·1.1.2 이전 가이드](addons/motion_preview/API.md)를 제공합니다. 모델/라이브러리 연결, 모션 선택, 재생·정지·속도·반복·시간 이동과 상태 신호를 통해 내부 UI 필드 없이 현재 미리보기 코어를 재사용합니다. 게임 어댑터가 정리한 다중 골격·기존 RetargetModifier 대상도 별도 경로로 연결할 수 있으며, 일반 모델 로더의 안전 정책은 유지합니다.
+
+공개 API 개별 검사(생성 에셋만 사용):
+
+```sh
+godot --headless --path . --quit-after 1200 --script tests/motion_preview_api.gd
+```
+
+[1.2.0 설계 결정·검증 기록](docs/1.2.0-api-release.md)을 참고하세요.
