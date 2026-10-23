@@ -1,6 +1,8 @@
 @tool
 extends RefCounted
 
+const PerformanceLog = preload("performance_log.gd")
+
 
 static func skeletons_in(node: Node) -> Array[Skeleton3D]:
 	var result: Array[Skeleton3D] = []
@@ -14,10 +16,72 @@ static func skeletons_in(node: Node) -> Array[Skeleton3D]:
 const Mapping = preload("humanoid_mapping.gd")
 
 
+# Cache resources, never live nodes. Each preview owns an independent skeleton instance.
+static var _source_cache := {}
+static var _model_skeleton_cache := {}
+const SOURCE_CACHE_LIMIT := 16
+
+
+static func clear_caches() -> void:
+	_source_cache.clear()
+	_model_skeleton_cache.clear()
+
+
+static func _snapshot(skeleton: Skeleton3D) -> PackedScene:
+	var copy := skeleton.duplicate() as Skeleton3D
+	for child in copy.get_children():
+		child.free()
+	var packed := PackedScene.new()
+	packed.pack(copy)
+	copy.free()
+	return packed
+
+
+static func _model_skeleton(path: String) -> Node:
+	if not _model_skeleton_cache.has(path):
+		var packed := ResourceLoader.load(path) as PackedScene
+		var snapshot: PackedScene
+		if packed != null and preload("model_catalog.gd").is_model(packed):
+			var candidate := packed.instantiate()
+			snapshot = _snapshot(skeletons_in(candidate)[0])
+			candidate.free()
+		_model_skeleton_cache[path] = snapshot
+	var cached: PackedScene = _model_skeleton_cache[path]
+	return cached.instantiate() if cached != null else null
+
+
 # 원본 골격의 기준 자세와 축을 확보해 모션을 보정한다.
 # FBXDocument/GLTFDocument로 원본 파일을 메모리에 읽으며 씬의 수명은 PreviewControl이 관리한다.
 # 기준 골격을 확보할 수 없는 라이브러리는 bind()에서 이름이 일치하는 본을 직접 재생한다.
 static func source_scene(source: AnimationLibrary, model_paths: PackedStringArray = PackedStringArray()) -> Node:
+	var path := source.resource_path
+	if path.is_empty():
+		return null
+	var file_path := path.get_slice("::", 0)
+	var settings := FileAccess.get_file_as_string(file_path + ".import") if FileAccess.file_exists(file_path + ".import") else ""
+	var cache_key := [path, FileAccess.get_modified_time(file_path) if FileAccess.file_exists(file_path) else 0, settings, model_paths].hash()
+	if _source_cache.has(cache_key):
+		PerformanceLog.write("source skeleton: cache hit | " + path)
+		var cached: PackedScene = _source_cache[cache_key]
+		return cached.instantiate() if cached != null else null
+	var started := Time.get_ticks_usec()
+	var scene := _read_source_scene(source, model_paths)
+	var rigs: Array[Skeleton3D] = []
+	if scene != null:
+		rigs = skeletons_in(scene)
+	var packed: PackedScene = _snapshot(rigs[0]) if rigs.size() == 1 else null
+	if scene != null and packed == null:
+		return scene
+	if scene != null:
+		scene.free()
+	if _source_cache.size() >= SOURCE_CACHE_LIMIT:
+		_source_cache.erase(_source_cache.keys()[0])
+	_source_cache[cache_key] = packed
+	PerformanceLog.write("source skeleton: %.1f ms | %s" % [(Time.get_ticks_usec() - started) / 1000.0, path])
+	return packed.instantiate() if packed != null else null
+
+
+static func _read_source_scene(source: AnimationLibrary, model_paths: PackedStringArray) -> Node:
 	var path := source.resource_path.get_slice("::", 0)
 	var extension := path.get_extension().to_lower()
 	if extension not in ["fbx", "glb", "gltf"] or not FileAccess.file_exists(path):
@@ -76,10 +140,9 @@ static func _reference_model(source: AnimationLibrary, original: Skeleton3D, mod
 	var result: Node
 	var reference: Skeleton3D
 	for path in model_paths:
-		var packed := ResourceLoader.load(path) as PackedScene
-		if packed == null or not preload("model_catalog.gd").is_model(packed):
+		var candidate := _model_skeleton(path)
+		if candidate == null:
 			continue
-		var candidate := packed.instantiate()
 		var skeleton := skeletons_in(candidate)[0]
 		var matches := true
 		for bone in bones:

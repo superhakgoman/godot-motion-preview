@@ -1,6 +1,8 @@
 @tool
 extends VBoxContainer
 
+const PerformanceLog = preload("performance_log.gd")
+
 const Catalog = preload("model_catalog.gd")
 const Binding = preload("motion_binding.gd")
 const Bounds = preload("preview_bounds.gd")
@@ -14,6 +16,10 @@ signal playback_changed(is_playing: bool)
 signal target_changed
 signal load_failed(message: String)
 
+var _loaded_model_stamp := Vector2i.ZERO
+var _loaded_model_path := ""
+var _framing_bounds := AABB()
+var _has_framing_bounds := false
 var _prepared := false
 var _animation_root: Node
 var _pose_updated := Callable()
@@ -458,7 +464,8 @@ func update_models(paths: PackedStringArray) -> void:
 			selected = index
 	model_menu.select(selected)
 	if selected > 0:
-		_load_model(preferred_model)
+		if _loaded_model_path != preferred_model or not is_instance_valid(model) or _loaded_model_stamp != _model_stamp(preferred_model):
+			_load_model(preferred_model)
 	else:
 		_clear_model()
 		_set_status("모델을 선택하세요." if paths.size() > 0 else "스켈레톤과 메시가 있는 모델이 없습니다.")
@@ -471,6 +478,8 @@ func _model_chosen(index: int) -> void:
 
 
 func _clear_model() -> void:
+	_loaded_model_path = ""
+	_has_framing_bounds = false
 	_available = false
 	_set_playing(false)
 	_selected_motion = &""
@@ -500,7 +509,17 @@ func _clear_model() -> void:
 	target_changed.emit()
 
 
+func _model_stamp(path: String) -> Vector2i:
+	return Vector2i(FileAccess.get_modified_time(path), FileAccess.get_modified_time(path + ".import") if FileAccess.file_exists(path + ".import") else 0)
+
+
 func _load_model(path: String) -> void:
+	var started := Time.get_ticks_usec()
+	_load_model_impl(path)
+	PerformanceLog.write("model + binding + framing: %.1f ms | %s" % [(Time.get_ticks_usec() - started) / 1000.0, path])
+
+
+func _load_model_impl(path: String) -> void:
 	_clear_model()
 	_fill_clips()
 	if path.is_empty():
@@ -509,11 +528,15 @@ func _load_model(path: String) -> void:
 	if not ResourceLoader.exists(path, "PackedScene"):
 		_fail("모델 씬을 읽을 수 없습니다: " + path)
 		return
+	var started := Time.get_ticks_usec()
 	var packed := ResourceLoader.load(path) as PackedScene
+	_log_time("model resource load", started)
 	if packed == null or not Catalog.is_model(packed):
 		_fail("스크립트 없는 모델과 스켈레톤 하나가 필요합니다.")
 		return
+	started = Time.get_ticks_usec()
 	var instance := packed.instantiate()
+	_log_time("model instantiate", started)
 	if not instance is Node3D:
 		instance.free()
 		_fail("Node3D 모델이 필요합니다.")
@@ -528,12 +551,18 @@ func _load_model(path: String) -> void:
 		_fail("스켈레톤이 하나인 모델만 지원합니다.")
 		return
 	skeleton = skeletons[0]
+	_loaded_model_path = path
+	_loaded_model_stamp = _model_stamp(path)
 	player = AnimationPlayer.new()
 	player.callback_mode_process = AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_MANUAL
 	world.add_child(player)
 	player.root_node = player.get_path_to(model)
+	started = Time.get_ticks_usec()
 	_bind_library()
+	_log_time("animation binding", started)
+	started = Time.get_ticks_usec()
 	_frame_model()
+	_log_time("framing", started)
 	target_changed.emit()
 
 
@@ -652,6 +681,7 @@ func _seek(time: float) -> void:
 
 
 func _library_changed() -> void:
+	Binding.clear_caches()
 	if _prepared:
 		return
 	_fill_clips()
@@ -668,26 +698,30 @@ func _clips_renamed(_old: StringName, _new: StringName) -> void:
 	_library_changed()
 
 
-func _frame_model() -> void:
+func _frame_model(reuse_bounds: bool = false) -> void:
 	auto_frame = true
 	if not is_instance_valid(model):
 		return
 	# 자동 선택은 레이아웃 전에 발생할 수 있으므로 표시 영역이 있어야 구도를 계산한다.
 	if view_container.size.x <= 0 or view_container.size.y <= 0:
 		return
-	var bounds := AABB()
-	var found := false
-	var meshes := model.find_children("*", "MeshInstance3D", true, false)
-	if model is MeshInstance3D:
-		meshes.append(model)
-	for mesh in meshes:
-		if mesh.mesh == null or mesh.mesh.get_surface_count() == 0:
-			continue
-		var box := Bounds.mesh_bounds(mesh)
-		bounds = bounds.merge(box) if found else box
-		found = true
-	if not found:
-		return
+	if not reuse_bounds or not _has_framing_bounds:
+		var bounds := AABB()
+		var found := false
+		var meshes := model.find_children("*", "MeshInstance3D", true, false)
+		if model is MeshInstance3D:
+			meshes.append(model)
+		for mesh in meshes:
+			if mesh.mesh == null or mesh.mesh.get_surface_count() == 0:
+				continue
+			var box := Bounds.mesh_bounds(mesh)
+			bounds = bounds.merge(box) if found else box
+			found = true
+		if not found:
+			return
+		_framing_bounds = bounds
+		_has_framing_bounds = true
+	var bounds := _framing_bounds
 	target = bounds.get_center()
 	var aspect := view_container.size.x / view_container.size.y
 	var span := maxf(bounds.size.y, bounds.size.x / maxf(aspect, 0.1))
@@ -731,7 +765,7 @@ func _resize_view() -> void:
 
 func _reframe_after_resize() -> void:
 	if is_instance_valid(camera) and auto_frame:
-		_frame_model()
+		_frame_model(true)
 
 
 func _set_status(message: String, severity: String = "info") -> void:
@@ -761,3 +795,7 @@ func _update_retarget() -> void:
 		retarget_bridge.update()
 	if _pose_updated.is_valid():
 		_pose_updated.call()
+
+
+func _log_time(stage: String, started: int) -> void:
+	PerformanceLog.write("%s: %.1f ms" % [stage, (Time.get_ticks_usec() - started) / 1000.0])

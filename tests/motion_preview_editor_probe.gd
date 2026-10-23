@@ -181,8 +181,50 @@ func check_native_preview():
  check(not preview.status.has_theme_color_override("font_color"), "직접 재생 클립으로 전환하면 경고 해제")
  holder.queue_free()
  await frames(3)
+func check_file_logging():
+ var logger = preload("res://addons/motion_preview/performance_log.gd")
+ check(not ProjectSettings.get_setting(logger.SETTING, true), "개발자 파일 로그는 기본 off")
+ ProjectSettings.set_setting(logger.SETTING, true)
+ logger.write("file logging probe")
+ var path: String = logger.DIRECTORY.path_join(logger.FILE_NAME)
+ check(FileAccess.file_exists(path) and FileAccess.get_file_as_string(path).contains("file logging probe"), "옵션을 켜면 로그를 파일에 자동 저장")
+ var before := FileAccess.get_file_as_string(path)
+ ProjectSettings.set_setting(logger.SETTING, false)
+ logger.write("disabled logging probe")
+ check(FileAccess.get_file_as_string(path) == before, "옵션을 끄면 즉시 파일 기록 중단")
+ var rotated := true
+ for index in 5:
+  var file := FileAccess.open(path, FileAccess.WRITE)
+  file.seek(logger.MAX_BYTES - 1)
+  file.store_8(32)
+  file.close()
+  rotated = logger._append("rotation probe\n") and rotated
+ check(rotated and FileAccess.file_exists(path + ".3") and not FileAccess.file_exists(path + ".4") and FileAccess.get_file_as_string(path) == "rotation probe\n", "로그 순환은 이전 파일 3개만 유지")
+
+func check_log_settings_button():
+ var inspector := EditorInspector.new()
+ get_editor_interface().get_base_control().add_child(inspector)
+ inspector.edit(ProjectSettings)
+ await frames(3)
+ var property_script = preload("res://addons/motion_preview/log_settings_property.gd")
+ var found: EditorProperty
+ for node in inspector.find_children("*", "EditorProperty", true, false):
+  if node.get_script() == property_script:
+   found = node
+   break
+ check(found != null and found.open_button.text == "로그 폴더 열기", "로그 저장 옵션과 같은 행에 폴더 열기 버튼 생성")
+ if found != null:
+  found.enabled_toggle.set_pressed(true)
+  await frames(2)
+  check(ProjectSettings.get_setting("addons/motion_preview/developer/save_performance_logs"), "폴더 버튼 추가 후 로그 저장 체크박스 편집 유지")
+  found.enabled_toggle.set_pressed(false)
+ inspector.queue_free()
+ await frames(2)
+
 func run():
  await frames(120)
+ check_file_logging()
+ await check_log_settings_button()
  var interface = get_editor_interface()
  interface.get_file_system_dock().navigate_to_path("res://fixture_motion.tres")
  await frames(20)
@@ -196,6 +238,17 @@ func run():
   preview = find_preview(interface.get_inspector())
   check(preview != null and preview.player != null and not preview.play_button.disabled, "에디터 모델 선택 후 재생")
   if preview != null and preview.player != null:
+   var previous_model = preview.model
+   preview.update_models(preview.model_paths)
+   check(preview.model == previous_model, "목록 갱신 시 변경 없는 모델 인스턴스 재사용")
+   var binding = preload("res://addons/motion_preview/motion_binding.gd")
+   var first = binding._model_skeleton("res://fixture_model.tscn")
+   var second = binding._model_skeleton("res://fixture_model.tscn")
+   check(first is Skeleton3D and second is Skeleton3D and first != second and first.get_child_count() == 0, "기준 모델 캐시는 메시 없이 독립 골격을 반환")
+   first.set_bone_pose_rotation(0, Quaternion(Vector3.UP, 0.8))
+   check(second.get_bone_pose_rotation(0).angle_to(first.get_bone_pose_rotation(0)) > 0.1, "캐시에서 복원한 골격 사이에 자세를 공유하지 않음")
+   first.free()
+   second.free()
    preview.timeline.value = 0.5
    check(preview.skeleton.get_bone_pose_rotation(0).angle_to(Quaternion.IDENTITY) > 0.1, "에디터에서 실제 본 자세 적용")
   var library = AnimationLibrary.new()
