@@ -27,7 +27,9 @@ def main() -> None:
             continue
         if path.is_symlink():
             parser.error("플러그인 폴더의 심볼릭 링크는 배포할 수 없습니다.")
-        if path.is_file() and path.suffix not in (".pyc", ".tmp"):
+        if path.is_file():
+            if path.name != "LICENSE" and path.suffix not in {".gd", ".uid", ".json", ".cfg", ".md"}:
+                parser.error(f"배포 대상이 아닌 파일이 플러그인 폴더에 있습니다: {relative.as_posix()}")
             files.append((path, f"{name}/{relative.as_posix()}"))
     if not (source / "LICENSE").exists():
         files.append((root / "LICENSE", f"{name}/LICENSE"))

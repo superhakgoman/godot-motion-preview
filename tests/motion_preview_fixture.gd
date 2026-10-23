@@ -13,9 +13,12 @@ func _initialize():
  mesh.mesh.size = Vector3(5, 2, 0.6)
  model.add_child(mesh)
  mesh.owner = model
- var scene = PackedScene.new()
- scene.pack(model)
- ResourceSaver.save(scene, "res://fixture_model.tscn")
+ mesh.skeleton = NodePath("../Skeleton")
+ mesh.skin = skeleton.create_skin_from_rest_transforms()
+ var document = GLTFDocument.new()
+ var state = GLTFState.new()
+ assert(document.append_from_scene(model, state) == OK)
+ assert(document.write_to_filesystem(state, "res://fixture_model.glb") == OK)
  model.free()
  var clip = Animation.new()
  clip.length = 1

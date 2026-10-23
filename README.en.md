@@ -39,7 +39,7 @@ The plugin's controls currently use Korean labels; their meanings are provided b
 
 ### Compatible models and animations
 
-Models are discovered throughout the project. Imported FBX and GLB models, along with `.tscn` / `.scn` scenes, appear in the list if they have **no attached scripts, exactly one Skeleton3D, and an actual mesh**. Scenes with game scripts are excluded. To preview such a character, you must save a separate scene containing its appearance without scripts. No dedicated asset folder is required.
+Models are discovered from **FBX and GLB files** only. `.tscn`, `.scn`, and `.gltf` are excluded from model discovery and the normal model loader. Models must have no attached scripts, a mesh, and either one skeleton or a connected `Skeleton3D → RetargetModifier3D → Skeleton3D` pair. The existing modifier transfers motion from the driving skeleton to the deformation skeleton. Independent multiple rigs and props without skeletons are excluded. Godot's imported model and retarget settings are preserved. The last model resource is retained across inspector changes; no temporary scene files are generated.
 
 Humanoid motions can be automatically previewed on models with different skeletons. Models missing some bones play the applicable motion. A **yellow warning** identifies adjusted or omitted motion; a **red error** indicates that playback is unavailable.
 

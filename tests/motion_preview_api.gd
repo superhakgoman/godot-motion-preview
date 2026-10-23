@@ -173,9 +173,22 @@ func run() -> void:
 	mesh.owner = safe
 	var packed := PackedScene.new()
 	packed.pack(safe)
-	var path := "res://output/motion_api_model.tscn"
+	var path := "res://output/motion_api_model.glb"
 	DirAccess.make_dir_recursive_absolute("res://output")
-	ResourceSaver.save(packed, path)
+	mesh.skeleton = NodePath("../Rig")
+	mesh.skin = skeleton.create_skin_from_rest_transforms()
+	var document := GLTFDocument.new()
+	var state := GLTFState.new()
+	document.append_from_scene(safe, state)
+	document.write_to_filesystem(state, path)
+	var imported := GLTFState.new()
+	document.append_from_file(path, imported)
+	var imported_root := document.generate_scene(imported)
+	for node in imported_root.find_children("*", "Node", true, false):
+		node.owner = imported_root
+	packed.pack(imported_root)
+	packed.take_over_path(path)
+	imported_root.free()
 	safe.free()
 	var preceding := make_target()
 	preview.set_prepared_target(preceding, preceding, {&"rpg": library})
@@ -199,11 +212,13 @@ func run() -> void:
 	preview.set_animation_library(null)
 	check(preview.get_motions().is_empty(), "null library supported")
 	var multi := make_target()
+	var unrelated_rig := multi.get_node("Rig").get_child(0).get_child(0)
+	unrelated_rig.reparent(multi, false)
 	for node in multi.find_children("*", "Node", true, false):
 		node.owner = multi
 	var multi_scene := PackedScene.new()
 	multi_scene.pack(multi)
-	check(not Catalog.is_model(multi_scene), "general catalog still rejects multiple skeletons")
+	check(not Catalog.is_model(multi_scene), "general catalog still rejects unrelated skeletons")
 	multi.free()
 	var switching := make_target()
 	preview.set_prepared_target(switching, switching, {&"rpg": make_library()})

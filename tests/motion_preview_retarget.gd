@@ -154,6 +154,7 @@ func check_source_options() -> void:
 	config.set_value("params", "nodes/import_as_skeleton_bones", true)
 	config.save(path + ".import")
 	var paths := PackedStringArray()
+	var retained: Array[PackedScene] = []
 	for height in [2.0, 3.0]:
 		var model := Node3D.new()
 		model.name = "Reference"
@@ -170,8 +171,23 @@ func check_source_options() -> void:
 		mesh.owner = model
 		var packed := PackedScene.new()
 		packed.pack(model)
-		var candidate_path := "res://output/motion_preview_checks/reference_%d.tscn" % int(height)
-		ResourceSaver.save(packed, candidate_path)
+		var candidate_path := "res://output/motion_preview_checks/reference_%d.glb" % int(height)
+		mesh.skeleton = NodePath("../" + String(skeleton.name))
+		mesh.skin = skeleton.create_skin_from_rest_transforms()
+		var document := GLTFDocument.new()
+		var export_state := GLTFState.new()
+		skeleton.reset_bone_poses()
+		document.append_from_scene(model, export_state)
+		document.write_to_filesystem(export_state, candidate_path)
+		var imported := GLTFState.new()
+		document.append_from_file(candidate_path, imported)
+		var imported_root := document.generate_scene(imported)
+		for node in imported_root.find_children("*", "Node", true, false):
+			node.owner = imported_root
+		packed.pack(imported_root)
+		packed.take_over_path(candidate_path)
+		retained.append(packed)
+		imported_root.free()
 		paths.append(candidate_path)
 		model.free()
 	var animation := Animation.new()

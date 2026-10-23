@@ -20,6 +20,7 @@ var _loaded_model_stamp := Vector2i.ZERO
 var _loaded_model_path := ""
 var _framing_bounds := AABB()
 var _has_framing_bounds := false
+var _import_retarget_driver: Skeleton3D
 var _prepared := false
 var _animation_root: Node
 var _pose_updated := Callable()
@@ -366,7 +367,7 @@ func _build_ui() -> void:
 	viewport = SubViewport.new()
 	viewport.size = Vector2i(320, 320)
 	viewport.own_world_3d = true
-	viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	viewport.render_target_update_mode = SubViewport.UPDATE_WHEN_VISIBLE
 	view_container.add_child(viewport)
 	timeline = HSlider.new()
 	timeline.step = 0.001
@@ -445,6 +446,17 @@ func _fill_clips() -> void:
 	motions_changed.emit()
 
 
+# Filesystem/manual refresh must replace live nodes even when only imported
+# dependencies changed and the source file's timestamp stayed the same.
+func refresh_models(paths: PackedStringArray) -> void:
+	model_paths = paths
+	if _prepared or not is_node_ready():
+		return
+	_load_source_skeleton()
+	_loaded_model_path = ""
+	update_models(paths)
+
+
 func update_models(paths: PackedStringArray) -> void:
 	model_paths = paths
 	if _prepared:
@@ -478,6 +490,7 @@ func _model_chosen(index: int) -> void:
 
 
 func _clear_model() -> void:
+	_import_retarget_driver = null
 	_loaded_model_path = ""
 	_has_framing_bounds = false
 	_available = false
@@ -525,14 +538,17 @@ func _load_model_impl(path: String) -> void:
 	if path.is_empty():
 		_set_status("모델을 선택하세요.")
 		return
+	if not Catalog.accepts_path(path):
+		_fail("모델은 FBX 또는 GLB 파일을 선택하세요.")
+		return
 	if not ResourceLoader.exists(path, "PackedScene"):
 		_fail("모델 씬을 읽을 수 없습니다: " + path)
 		return
 	var started := Time.get_ticks_usec()
-	var packed := ResourceLoader.load(path) as PackedScene
+	var packed := Catalog.load_preview_scene(path)
 	_log_time("model resource load", started)
 	if packed == null or not Catalog.is_model(packed):
-		_fail("스크립트 없는 모델과 스켈레톤 하나가 필요합니다.")
+		_fail("스크립트 없는 모델과 단일 골격 또는 연결된 리타게팅 골격이 필요합니다.")
 		return
 	started = Time.get_ticks_usec()
 	var instance := packed.instantiate()
@@ -546,11 +562,13 @@ func _load_model_impl(path: String) -> void:
 	_apply_materials()
 	world.add_child(model)
 	var skeletons := Binding.skeletons_in(model)
-	if skeletons.size() != 1:
+	skeleton = Catalog.driving_skeleton(model)
+	if skeleton == null:
 		_clear_model()
-		_fail("스켈레톤이 하나인 모델만 지원합니다.")
+		_fail("단일 골격 또는 연결된 리타게팅 골격이 필요합니다.")
 		return
-	skeleton = skeletons[0]
+	if skeletons.size() == 2:
+		_import_retarget_driver = skeleton
 	_loaded_model_path = path
 	_loaded_model_stamp = _model_stamp(path)
 	player = AnimationPlayer.new()
@@ -567,13 +585,15 @@ func _load_model_impl(path: String) -> void:
 
 
 func _prepare_nodes(node: Node) -> void:
+	if node is Skeleton3D:
+		node.modifier_callback_mode_process = Skeleton3D.MODIFIER_CALLBACK_MODE_PROCESS_MANUAL
 	node.process_mode = Node.PROCESS_MODE_DISABLED
 	if node is MeshInstance3D:
 		node.set_meta("_motion_preview_material", node.material_override)
 	for child in node.get_children():
 		# 미리보기의 재생과 렌더링을 플러그인이 제어하도록 원본 제어 노드를 제거한다.
 		if (child is AnimationMixer or child is CollisionObject3D or child is Camera3D
-			or child is AudioStreamPlayer or child is AudioStreamPlayer3D or child is SkeletonModifier3D):
+			or child is AudioStreamPlayer or child is AudioStreamPlayer3D or (child is SkeletonModifier3D and not child is RetargetModifier3D)):
 			child.free()
 		else:
 			_prepare_nodes(child)
@@ -793,6 +813,8 @@ func _load_source_skeleton() -> void:
 func _update_retarget() -> void:
 	if native_active and is_instance_valid(retarget_bridge):
 		retarget_bridge.update()
+	if is_instance_valid(_import_retarget_driver):
+		_import_retarget_driver.advance(0.0)
 	if _pose_updated.is_valid():
 		_pose_updated.call()
 

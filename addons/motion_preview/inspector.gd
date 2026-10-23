@@ -18,7 +18,7 @@ func _parse_begin(object: Object) -> void:
 	preview.preferred_model = host.selected_model
 	preview.model_selected.connect(host.remember_model)
 	preview.refresh_requested.connect(host.refresh_models)
-	host.models_changed.connect(preview.update_models)
+	host.models_changed.connect(preview.refresh_models)
 	previews = previews.filter(func(reference: WeakRef): return reference.get_ref() != null)
 	previews.append(weakref(preview))
 	add_custom_control(preview)

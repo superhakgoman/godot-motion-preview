@@ -7,7 +7,7 @@ Godot 4.7+. Preload `res://addons/motion_preview/preview_control.gd` and embed t
 | Method | Contract |
 |---|---|
 | `set_animation_library(AnimationLibrary)` | Configure before ready or replace afterward. Null creates an empty library. Observes library changes. Rebinds an existing safe model. When leaving prepared mode, releases that target; load a safe model afterward. |
-| `load_model(path: String) -> bool` | After ready, load through the existing safe catalog policy and bind the configured library. Replaces/releases the previous target, even on failure. Does not broaden the Inspector policy. |
+| `load_model(path: String) -> bool` | After ready, load an FBX or GLB using the safe catalog policy and bind the configured library. Other file formats are rejected. Single skeletons and connected imported driver/RetargetModifier/deformation pairs are supported. Replaces/releases the previous target, even on failure. Does not broaden the Inspector policy. |
 | `set_prepared_target(root: Node3D, animation_root: Node, libraries: Dictionary, pose_updated: Callable = Callable()) -> bool` | After ready, accept an adapter-prepared instance with registered motion paths. Detailed ownership and safety contract below. No automatic remapping or retargeting. |
 | `clear_preview()` | Release the target/player/bridge/callback, stop playback, clear selection/time. Configured safe library and preferences remain. Safe repeatedly and before ready. |
 | `get_motions() -> PackedStringArray` | Safe mode: configured library clip names. Prepared mode: full AnimationPlayer keys such as `rpg/attack`; default library keys have no prefix. `RESET` is omitted in prepared mode. |

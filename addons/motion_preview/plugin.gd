@@ -33,6 +33,8 @@ func _enter_tree() -> void:
 
 
 func _exit_tree() -> void:
+	Catalog.clear_preview_scene_cache()
+	preload("motion_binding.gd").clear_caches()
 	var filesystem := get_editor_interface().get_resource_filesystem()
 	if filesystem.filesystem_changed.is_connected(_queue_refresh):
 		filesystem.filesystem_changed.disconnect(_queue_refresh)
@@ -82,6 +84,7 @@ func _queue_refresh() -> void:
 
 
 func refresh_models() -> void:
+	Catalog.clear_preview_scene_cache()
 	preload("motion_binding.gd").clear_caches()
 	refresh_pending = false
 	if not is_inside_tree():

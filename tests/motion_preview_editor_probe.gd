@@ -26,7 +26,7 @@ func check_initial_framing(preview: Node, label: String):
  preview._frame_model()
  check(is_equal_approx(initial_distance, preview.distance), label)
 func model_fits(preview: Node) -> bool:
- var mesh = preview.model.get_node("Body")
+ var mesh = preview.model.find_child("Body", true, false)
  var bounds: AABB = mesh.global_transform * mesh.get_aabb()
  var area := Rect2(Vector2.ZERO, Vector2(preview.viewport.size))
  for corner in 8:
@@ -47,8 +47,8 @@ func check_resize_framing():
  holder.position = Vector2(100, 100)
  var preview := Preview.new()
  preview.library = load("res://fixture_motion.tres")
- preview.model_paths = PackedStringArray(["res://fixture_model.tscn"])
- preview.preferred_model = "res://fixture_model.tscn"
+ preview.model_paths = PackedStringArray(["res://fixture_model.glb"])
+ preview.preferred_model = "res://fixture_model.glb"
  holder.add_child(preview)
  preview.size = Vector2(420, 600)
  await frames(20)
@@ -129,7 +129,15 @@ func check_native_preview():
  mesh.owner = root
  var packed := PackedScene.new()
  packed.pack(root)
- ResourceSaver.save(packed, "res://native_model.tscn")
+ var mesh_node := root.get_child(1) as MeshInstance3D
+ mesh_node.skeleton = NodePath("../" + String(target.name))
+ mesh_node.skin = target.create_skin_from_rest_transforms()
+ var document := GLTFDocument.new()
+ var state := GLTFState.new()
+ document.append_from_scene(root, state)
+ document.write_to_filesystem(state, "res://native_model.glb")
+ get_editor_interface().get_resource_filesystem().scan()
+ await frames(30)
  root.free()
  var source := native_humanoid("mixamorig_", 1.0)
  var clip := Animation.new()
@@ -154,8 +162,8 @@ func check_native_preview():
  get_editor_interface().get_base_control().add_child(holder)
  var preview := Preview.new()
  preview.library = library
- preview.model_paths = PackedStringArray(["res://native_model.tscn"])
- preview.preferred_model = "res://native_model.tscn"
+ preview.model_paths = PackedStringArray(["res://native_model.glb"])
+ preview.preferred_model = "res://native_model.glb"
  holder.add_child(preview)
  preview.source_model = source
  preview.source_skeleton = source
@@ -221,6 +229,85 @@ func check_log_settings_button():
  inspector.queue_free()
  await frames(2)
 
+func check_imported_pair():
+ var catalog = preload("res://addons/motion_preview/model_catalog.gd")
+ check(catalog.accepts_path("res://model.FBX") and catalog.accepts_path("res://model.GLB") and not catalog.accepts_path("res://model.tscn") and not catalog.accepts_path("res://model.scn") and not catalog.accepts_path("res://model.gltf"), "모델 파일은 FBX·GLB만 허용")
+ var path := "res://native_model.glb"
+ var packed: PackedScene = load(path)
+ var instance := packed.instantiate()
+ var driver: Skeleton3D = catalog.driving_skeleton(instance)
+ var deform := driver.duplicate() as Skeleton3D
+ for child in deform.get_children(): child.free()
+ deform.name = "OriginalSkeleton"
+ var modifier := RetargetModifier3D.new()
+ modifier.profile = SkeletonProfileHumanoid.new()
+ modifier.use_global_pose = false
+ driver.add_child(modifier)
+ modifier.add_child(deform)
+ for mesh in instance.find_children("*", "MeshInstance3D", true, false):
+  mesh.skeleton = mesh.get_path_to(deform)
+ for node in instance.find_children("*", "Node", true, false): node.owner = instance
+ var paired := PackedScene.new()
+ paired.pack(instance)
+ check(catalog.is_model(paired), "임포트 리타게팅 골격 두 개는 모델 후보로 허용")
+ catalog.clear_preview_scene_cache()
+ paired.take_over_path(path)
+ var library := AnimationLibrary.new()
+ var clip := Animation.new()
+ clip.length = 1.0
+ var track := clip.add_track(Animation.TYPE_ROTATION_3D)
+ clip.track_set_path(track, ^"Skeleton:LeftUpperArm")
+ var index := driver.find_bone("LeftUpperArm")
+ var rest := driver.get_bone_rest(index).basis.get_rotation_quaternion()
+ clip.rotation_track_insert_key(track, 0.0, rest)
+ clip.rotation_track_insert_key(track, 1.0, rest * Quaternion(Vector3.UP, 0.8))
+ library.add_animation("direct", clip)
+ var holder := Control.new()
+ get_editor_interface().get_base_control().add_child(holder)
+ var preview := Preview.new()
+ preview.library = library
+ preview.model_paths = PackedStringArray([path])
+ preview.preferred_model = path
+ holder.add_child(preview)
+ await frames(5)
+ var actual := preview.model.find_child("OriginalSkeleton", true, false) as Skeleton3D
+ check(preview.has_motion() and preview.model.find_children("*", "Skeleton3D", true, false).size() == 2 and actual.get_parent() is RetargetModifier3D, "일반 로더가 두 골격과 기존 RetargetModifier를 보존")
+ preview.seek_time(0.1)
+ await frames(3)
+ var first: Quaternion = actual.get_bone_pose_rotation(index)
+ preview.seek_time(0.8)
+ await frames(3)
+ var second: Quaternion = actual.get_bone_pose_rotation(index)
+ check(first.angle_to(second) > 0.2, "시간 이동이 실제 메시용 골격의 자세를 변경")
+ await frames(5)
+ check(not preview.is_playing() and second.angle_to(actual.get_bone_pose_rotation(index)) < 0.001, "일시정지 상태에서도 변형 자세 유지")
+ var source := native_humanoid("mixamorig_", 1.0)
+ var native_clip := clip.duplicate(true) as Animation
+ native_clip.track_set_path(0, ^"Skeleton:mixamorig_LeftUpperArm")
+ var native_library := AnimationLibrary.new()
+ native_library.add_animation("native", native_clip)
+ preview.set_animation_library(native_library)
+ preview.source_model = source
+ preview.source_skeleton = source
+ preview._bind_library()
+ check(preview.native_active and preview.retarget_bridge != null, "외부 골격에서 임포트 구동 골격으로 리타게팅 연결")
+ preview.seek_time(0.1)
+ await frames(3)
+ first = actual.get_bone_pose_rotation(index)
+ preview.seek_time(0.8)
+ await frames(3)
+ check(first.angle_to(actual.get_bone_pose_rotation(index)) > 0.2, "추가 리타게팅 뒤에도 기존 변형 골격까지 자세 전달")
+ holder.queue_free()
+ await frames(3)
+ deform.owner = null
+ deform.reparent(instance, false)
+ deform.owner = instance
+ var unrelated := PackedScene.new()
+ unrelated.pack(instance)
+ check(not catalog.is_model(unrelated), "서로 연결되지 않은 다중 골격은 계속 거부")
+ instance.free()
+ catalog.clear_preview_scene_cache()
+
 func run():
  await frames(120)
  check_file_logging()
@@ -242,8 +329,8 @@ func run():
    preview.update_models(preview.model_paths)
    check(preview.model == previous_model, "목록 갱신 시 변경 없는 모델 인스턴스 재사용")
    var binding = preload("res://addons/motion_preview/motion_binding.gd")
-   var first = binding._model_skeleton("res://fixture_model.tscn")
-   var second = binding._model_skeleton("res://fixture_model.tscn")
+   var first = binding._model_skeleton("res://fixture_model.glb")
+   var second = binding._model_skeleton("res://fixture_model.glb")
    check(first is Skeleton3D and second is Skeleton3D and first != second and first.get_child_count() == 0, "기준 모델 캐시는 메시 없이 독립 골격을 반환")
    first.set_bone_pose_rotation(0, Quaternion(Vector3.UP, 0.8))
    check(second.get_bone_pose_rotation(0).angle_to(first.get_bone_pose_rotation(0)) > 0.1, "캐시에서 복원한 골격 사이에 자세를 공유하지 않음")
@@ -251,6 +338,9 @@ func run():
    second.free()
    preview.timeline.value = 0.5
    check(preview.skeleton.get_bone_pose_rotation(0).angle_to(Quaternion.IDENTITY) > 0.1, "에디터에서 실제 본 자세 적용")
+  var catalog = preload("res://addons/motion_preview/model_catalog.gd")
+  var retained_scene = weakref(catalog._preview_scene)
+  var retained_scene_id: int = catalog._preview_scene.get_instance_id()
   var library = AnimationLibrary.new()
   library.add_animation("second", load("res://fixture_motion.tres").get_animation("turn"))
   interface.edit_resource(library)
@@ -258,8 +348,13 @@ func run():
   preview = find_preview(interface.get_inspector())
   check(preview != null and preview.model_menu.selected == 1 and preview.player != null, "다른 리소스에서도 모델 선택 유지")
   check_initial_framing(preview, "자동 선택 모델의 초기 구도가 시점 초기화와 일치")
+  check(retained_scene.get_ref() != null and catalog._preview_scene.get_instance_id() == retained_scene_id, "인스펙터 교체 후에도 동일한 모델 PackedScene 유지")
+  var before_refresh: int = preview.model.get_instance_id()
+  preview.refresh_models(preview.model_paths)
+  check(preview.model.get_instance_id() != before_refresh and preview.has_motion(), "파일 수정 시각이 같아도 새로 고침은 표시 모델과 바인딩 갱신")
   interface.set_plugin_enabled("motion_preview", false)
   await frames(10)
+  check(catalog._preview_scene == null, "플러그인 해제 시 모델 리소스 캐시 해제")
   check(find_preview(interface.get_inspector()) == null, "플러그인 해제 시 미리보기 제거")
   interface.set_plugin_enabled("motion_preview", true)
   await frames(20)
@@ -268,7 +363,11 @@ func run():
   preview = find_preview(interface.get_inspector())
   check(preview != null and preview.model_menu.selected == 1 and preview.player != null, "재활성화 후 마지막 모델 복원")
   check_initial_framing(preview, "재활성화한 모델의 초기 구도가 시점 초기화와 일치")
+ var catalog = preload("res://addons/motion_preview/model_catalog.gd")
+ catalog.clear_preview_scene_cache()
+ check(catalog._preview_scene == null and catalog._preview_scene_path.is_empty(), "새로 고침용 캐시 무효화는 경로와 모델 모두 제거")
  await check_resize_framing()
  await check_native_preview()
+ await check_imported_pair()
  print("PORTABLE_EDITOR_COMPLETE checks=%d failures=%d" % [checks, failures])
  get_tree().quit(0 if failures == 0 else 1)

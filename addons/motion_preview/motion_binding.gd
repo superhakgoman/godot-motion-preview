@@ -28,9 +28,18 @@ static func clear_caches() -> void:
 
 
 static func _snapshot(skeleton: Skeleton3D) -> PackedScene:
-	var copy := skeleton.duplicate() as Skeleton3D
-	for child in copy.get_children():
-		child.free()
+	var copy := Skeleton3D.new()
+	copy.name = skeleton.name
+	copy.transform = skeleton.transform
+	copy.motion_scale = skeleton.motion_scale
+	for index in skeleton.get_bone_count():
+		copy.add_bone(skeleton.get_bone_name(index))
+	for index in skeleton.get_bone_count():
+		copy.set_bone_parent(index, skeleton.get_bone_parent(index))
+		copy.set_bone_rest(index, skeleton.get_bone_rest(index))
+		copy.set_bone_pose_position(index, skeleton.get_bone_pose_position(index))
+		copy.set_bone_pose_rotation(index, skeleton.get_bone_pose_rotation(index))
+		copy.set_bone_pose_scale(index, skeleton.get_bone_pose_scale(index))
 	var packed := PackedScene.new()
 	packed.pack(copy)
 	copy.free()
@@ -38,12 +47,16 @@ static func _snapshot(skeleton: Skeleton3D) -> PackedScene:
 
 
 static func _model_skeleton(path: String) -> Node:
+	if not preload("model_catalog.gd").accepts_path(path):
+		return null
 	if not _model_skeleton_cache.has(path):
 		var packed := ResourceLoader.load(path) as PackedScene
 		var snapshot: PackedScene
 		if packed != null and preload("model_catalog.gd").is_model(packed):
 			var candidate := packed.instantiate()
-			snapshot = _snapshot(skeletons_in(candidate)[0])
+			var driver := preload("model_catalog.gd").driving_skeleton(candidate)
+			if driver != null:
+				snapshot = _snapshot(driver)
 			candidate.free()
 		_model_skeleton_cache[path] = snapshot
 	var cached: PackedScene = _model_skeleton_cache[path]
@@ -59,7 +72,7 @@ static func source_scene(source: AnimationLibrary, model_paths: PackedStringArra
 		return null
 	var file_path := path.get_slice("::", 0)
 	var settings := FileAccess.get_file_as_string(file_path + ".import") if FileAccess.file_exists(file_path + ".import") else ""
-	var cache_key := [path, FileAccess.get_modified_time(file_path) if FileAccess.file_exists(file_path) else 0, settings, model_paths].hash()
+	var cache_key := var_to_str([path, FileAccess.get_modified_time(file_path) if FileAccess.file_exists(file_path) else 0, settings, model_paths])
 	if _source_cache.has(cache_key):
 		PerformanceLog.write("source skeleton: cache hit | " + path)
 		var cached: PackedScene = _source_cache[cache_key]
@@ -187,7 +200,6 @@ static func bind(source: AnimationLibrary, skeleton: Skeleton3D, root: Node, sou
 	var errors := {}
 	var warnings := {}
 	var native_clips := {}
-	var skipped := 0
 	var source_roles := Mapping.for_skeleton(source_skeleton, source_map) if source_skeleton != null else {}
 	var target_roles := Mapping.for_skeleton(skeleton, target_map)
 	var bridge: Node3D
@@ -234,7 +246,6 @@ static func bind(source: AnimationLibrary, skeleton: Skeleton3D, root: Node, sou
 		for track in range(animation.get_track_count() - 1, -1, -1):
 			if not _is_bone_track(animation, track):
 				animation.remove_track(track)
-				skipped += 1
 				continue
 			var bone := String(animation.track_get_path(track).get_subname(0))
 			var destination := skeleton
@@ -287,7 +298,7 @@ static func bind(source: AnimationLibrary, skeleton: Skeleton3D, root: Node, sou
 			warnings[name] = "경고: " + " ".join(notes)
 		animation.loop_mode = Animation.LOOP_LINEAR
 		library.add_animation(name, animation)
-	return {"library": library, "errors": errors, "warnings": warnings, "skipped": skipped, "bridge": bridge, "native_clips": native_clips}
+	return {"library": library, "errors": errors, "warnings": warnings, "bridge": bridge, "native_clips": native_clips}
 
 
 static func _is_bone_track(animation: Animation, track: int) -> bool:
