@@ -121,7 +121,8 @@ func get_motions() -> PackedStringArray:
 			result.append(clip_menu.get_item_text(index))
 	elif library != null:
 		for key in library.get_animation_list():
-			result.append(String(key))
+			if key != &"RESET":
+				result.append(String(key))
 	return result
 
 
@@ -442,7 +443,7 @@ func _fill_clips() -> void:
 		previous = clip_menu.get_item_text(clip_menu.selected)
 	clip_menu.clear()
 	for clip in (player.get_animation_list() if _prepared and is_instance_valid(player) else library.get_animation_list()):
-		if _prepared and clip == &"RESET":
+		if clip == &"RESET" or String(clip).ends_with("/RESET"):
 			continue
 		clip_menu.add_item(String(clip))
 		if String(clip) == previous:
@@ -831,7 +832,7 @@ func _load_source_skeleton() -> void:
 	if is_instance_valid(source_model):
 		source_model.free()
 	source_skeleton = null
-	source_model = Binding.source_scene(library, model_paths)
+	source_model = Binding.source_scene(library)
 	if source_model != null:
 		var skeletons := Binding.skeletons_in(source_model)
 		if skeletons.size() == 1:

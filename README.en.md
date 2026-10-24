@@ -115,6 +115,18 @@ When file logging is enabled, `performance.log` also records playback errors, om
 
 ### 1.2.5 retarget orientation and bone mapping fixes
 
-Retargeting includes skeleton ancestor axis/scale transforms and converts the result back to model coordinates. A reference model with incompatible root bind axes is rejected even when bone names and hierarchy match. Without compatible bind data, the preview uses source node poses for relative motion and warns that the initial pose can differ from the original animation.
+Retargeting includes skeleton ancestor axis/scale transforms and converts the result back to model coordinates. Automatic reference-model discovery and the relative-node-pose fallback from 1.2.5 were removed in 1.3.0.
 
 CAT numbered prefixes and semantic limb names, and Biped numbered fingers are recognized. Pelvis/chest hubs require matching bilateral limb connections. Ambiguous Bone001 head/accessory names remain unmapped; use a Godot BoneMap for those bones.
+
+### 1.3.0 automatic RESET preservation for animation FBX files
+
+Project Settings → Addons → Motion Preview → Import → Auto Import Rest As Reset defaults to true (`addons/motion_preview/import/auto_import_rest_as_reset`). After an FBX AnimationLibrary is imported, the addon enables `animation/import_rest_as_RESET` if necessary and reimports it once. The enabled policy overrides a per-file false. Scene imports and other file extensions are excluded. Opting out stops enforcement without reverting settings already applied.
+
+The adjacent “기존 모션 FBX에 적용” button enables the option and reimports existing FBX AnimationLibraries, including files already configured true, to capture reference metadata. Installation does not bulk-convert existing resources. This explicit button also works when automatic enforcement is disabled.
+
+The import plugin stores immutable skeleton topology, transforms and motion scale on RESET. Preview reconstructs the source skeleton using RESET keys and hides RESET from playable menus. Consumer-defined default RESET animations are not replaced. No temporary scene files are written. Old imported libraries need the bulk action to capture metadata.
+
+RESET records the rest pose Godot read; it cannot recover authoring bind data absent from the original file. Missing reliable reference data produces an error rather than another model/first animated pose being guessed. Standardized motion libraries must still be paired with appropriately prepared models.
+
+Run `python3 tests/check_motion_preview_imports.py /path/to/motion.FBX` for actual FBX import-policy integration checks in a disposable project. The source FBX and original project are unchanged.

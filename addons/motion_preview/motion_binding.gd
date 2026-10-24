@@ -18,13 +18,11 @@ const Mapping = preload("humanoid_mapping.gd")
 
 # Cache resources, never live nodes. Each preview owns an independent skeleton instance.
 static var _source_cache := {}
-static var _model_skeleton_cache := {}
 const SOURCE_CACHE_LIMIT := 16
 
 
 static func clear_caches() -> void:
 	_source_cache.clear()
-	_model_skeleton_cache.clear()
 
 
 static func _snapshot(skeleton: Skeleton3D) -> PackedScene:
@@ -48,39 +46,27 @@ static func _snapshot(skeleton: Skeleton3D) -> PackedScene:
 	return packed
 
 
-static func _model_skeleton(path: String) -> Node:
-	if not preload("model_catalog.gd").accepts_path(path):
-		return null
-	if not _model_skeleton_cache.has(path):
-		var packed := ResourceLoader.load(path) as PackedScene
-		var snapshot: PackedScene
-		if packed != null and preload("model_catalog.gd").is_model(packed):
-			var candidate := packed.instantiate()
-			var driver := preload("model_catalog.gd").driving_skeleton(candidate)
-			if driver != null:
-				snapshot = _snapshot(driver)
-			candidate.free()
-		_model_skeleton_cache[path] = snapshot
-	var cached: PackedScene = _model_skeleton_cache[path]
-	return cached.instantiate() if cached != null else null
-
-
 # 원본 골격의 기준 자세와 축을 확보해 모션을 보정한다.
 # FBXDocument/GLTFDocument로 원본 파일을 메모리에 읽으며 씬의 수명은 PreviewControl이 관리한다.
 # 기준 골격을 확보할 수 없는 라이브러리는 bind()에서 이름이 일치하는 본을 직접 재생한다.
-static func source_scene(source: AnimationLibrary, model_paths: PackedStringArray = PackedStringArray()) -> Node:
+static func source_scene(source: AnimationLibrary) -> Node:
+	if source.has_animation(&"RESET"):
+		var from_reset := preload("rest_pose.gd").skeleton_from_reset(source)
+		if from_reset == null:
+			PerformanceLog.diagnostic("reset_unusable", {"source": source.resource_path, "reason": "missing or invalid imported skeleton metadata; reimport using the RESET button"})
+		return from_reset
 	var path := source.resource_path
 	if path.is_empty():
 		return null
 	var file_path := path.get_slice("::", 0)
 	var settings := FileAccess.get_file_as_string(file_path + ".import") if FileAccess.file_exists(file_path + ".import") else ""
-	var cache_key := var_to_str([path, FileAccess.get_modified_time(file_path) if FileAccess.file_exists(file_path) else 0, settings, model_paths])
+	var cache_key := var_to_str([path, FileAccess.get_modified_time(file_path) if FileAccess.file_exists(file_path) else 0, settings])
 	if _source_cache.has(cache_key):
 		PerformanceLog.write("source skeleton: cache hit | " + path)
 		var cached: PackedScene = _source_cache[cache_key]
 		return cached.instantiate() if cached != null else null
 	var started := Time.get_ticks_usec()
-	var scene := _read_source_scene(source, model_paths)
+	var scene := _read_source_scene(source)
 	var rigs: Array[Skeleton3D] = []
 	if scene != null:
 		rigs = skeletons_in(scene)
@@ -96,7 +82,7 @@ static func source_scene(source: AnimationLibrary, model_paths: PackedStringArra
 	return packed.instantiate() if packed != null else null
 
 
-static func _read_source_scene(source: AnimationLibrary, model_paths: PackedStringArray) -> Node:
+static func _read_source_scene(source: AnimationLibrary) -> Node:
 	var path := source.resource_path.get_slice("::", 0)
 	var extension := path.get_extension().to_lower()
 	if extension not in ["fbx", "glb", "gltf"] or not FileAccess.file_exists(path):
@@ -133,89 +119,9 @@ static func _read_source_scene(source: AnimationLibrary, model_paths: PackedStri
 	var has_bind_pose := false
 	for skin in state.get_skins():
 		has_bind_pose = has_bind_pose or not skin.inverse_binds.is_empty()
-	if skeletons.size() == 1 and not has_bind_pose:
-		var reference := _reference_model(source, skeletons[0], model_paths)
-		if reference != null:
-			skeletons_in(reference)[0].set_meta("_motion_preview_rest_mode", "bind_pose")
-			scene.free()
-			return reference
 	for rig in skeletons:
 		rig.set_meta("_motion_preview_rest_mode", "bind_pose" if has_bind_pose else "node_pose")
 	return scene
-
-
-static func _reference_model(source: AnimationLibrary, original: Skeleton3D, model_paths: PackedStringArray) -> Node:
-	var bones := PackedStringArray()
-	for name in source.get_animation_list():
-		var animation := source.get_animation(name)
-		for track in animation.get_track_count():
-			if _is_bone_track(animation, track):
-				var bone := String(animation.track_get_path(track).get_subname(0))
-				if bone not in bones:
-					bones.append(bone)
-	if bones.is_empty():
-		return null
-	var result: Node
-	var reference: Skeleton3D
-	for path in model_paths:
-		var candidate := _model_skeleton(path)
-		if candidate == null:
-			continue
-		var skeleton := skeletons_in(candidate)[0]
-		var matches := true
-		for bone in bones:
-			var index := skeleton.find_bone(bone)
-			var original_index := original.find_bone(bone)
-			if index < 0 or original_index < 0:
-				matches = false
-				break
-			var parent := original.get_bone_parent(original_index)
-			while parent >= 0 and String(original.get_bone_name(parent)) not in bones:
-				parent = original.get_bone_parent(parent)
-			var actual_parent := skeleton.get_bone_parent(index)
-			while actual_parent >= 0 and String(skeleton.get_bone_name(actual_parent)) not in bones:
-				actual_parent = skeleton.get_bone_parent(actual_parent)
-			var expected_name := original.get_bone_name(parent) if parent >= 0 else &""
-			var actual_name := skeleton.get_bone_name(actual_parent) if actual_parent >= 0 else &""
-			if expected_name != actual_name:
-				matches = false
-				break
-		# Matching names and hierarchy do not establish matching animation axes.
-		# A mesh export can bake an FBX axis correction into its root bind pose.
-		# Applying animation-only keys to that bind pose rotates the entire body.
-		if matches:
-			var checked_roots := {}
-			for bone in bones:
-				var src_index := original.find_bone(bone)
-				var dst_index := skeleton.find_bone(bone)
-				while original.get_bone_parent(src_index) >= 0:
-					src_index = original.get_bone_parent(src_index)
-				while skeleton.get_bone_parent(dst_index) >= 0:
-					dst_index = skeleton.get_bone_parent(dst_index)
-				if checked_roots.has(src_index):
-					continue
-				checked_roots[src_index] = true
-				var src_basis := original.get_bone_rest(src_index).basis
-				var dst_basis := skeleton.get_bone_rest(dst_index).basis
-				if not src_basis.is_equal_approx(dst_basis):
-					matches = false
-					PerformanceLog.diagnostic("reference_rejected", {"model": path, "bone": bone, "reason": "root bind axes differ from animation source"})
-					break
-		if not matches:
-			candidate.free()
-			continue
-		if reference != null:
-			# 같은 이름·계층의 후보가 여러 개면 기준 자세까지 일치할 때 하나로 취급한다.
-			for bone in bones:
-				if not reference.get_bone_global_rest(reference.find_bone(bone)).is_equal_approx(skeleton.get_bone_global_rest(skeleton.find_bone(bone))):
-					candidate.free()
-					result.free()
-					return null
-			candidate.free()
-		else:
-			result = candidate
-			reference = skeleton
-	return result
 
 
 # 클립별로 직접 재생/엔진 리타게팅을 선택하고 미리보기 전용 AnimationLibrary를 만든다.
@@ -231,6 +137,8 @@ static func bind(source: AnimationLibrary, skeleton: Skeleton3D, root: Node, sou
 	var target_roles := Mapping.for_skeleton(skeleton, target_map)
 	var bridge: Node3D
 	for name in source.get_animation_list():
+		if name == &"RESET":
+			continue
 		# 트랙 경로 변경·제거와 반복 설정은 복사본에서만 수행한다.
 		var animation := source.get_animation(name).duplicate(true) as Animation
 		var missing := PackedStringArray()
@@ -257,6 +165,9 @@ static func bind(source: AnimationLibrary, skeleton: Skeleton3D, root: Node, sou
 					if src_parent_name != dst_parent_name or not source_skeleton.get_bone_rest(src).is_equal_approx(skeleton.get_bone_rest(dst)):
 						needs_retarget = true
 		omitted_bones[name] = missing
+		if needs_retarget and source_skeleton.get_meta("_motion_preview_rest_mode", "") == "node_pose":
+			errors[name] = "미리보기 불가: 모션의 기준 자세를 확인할 수 없습니다. 프로젝트 설정의 Motion Preview → Import에서 기존 모션 FBX에 RESET을 적용해 주세요."
+			continue
 		if needs_retarget:
 			var issue := Mapping.validate(source_skeleton, source_roles)
 			if issue.is_empty():
@@ -310,13 +221,11 @@ static func bind(source: AnimationLibrary, skeleton: Skeleton3D, root: Node, sou
 			continue
 		if tracks == 0:
 			if source_skeleton == null:
-				errors[name] = "미리보기 불가: 모션의 원본 골격을 읽지 못했고, 모델과 이름이 같은 본도 없습니다."
+				errors[name] = "미리보기 불가: RESET의 기준 골격 정보가 없습니다. 기존 모션 FBX에 RESET 적용 버튼으로 재임포트해 주세요." if source.has_animation(&"RESET") else "미리보기 불가: 모션의 원본 골격을 읽지 못했고, 모델과 이름이 같은 본도 없습니다."
 			else:
 				errors[name] = "미리보기 불가: 모션과 모델 사이에 대응된 본의 움직임이 없습니다."
 			continue
 		var notes := PackedStringArray()
-		if needs_retarget and source_skeleton.get_meta("_motion_preview_rest_mode", "") == "node_pose":
-			notes.append("원본 bind 자세를 확인하지 못해 원본 노드 자세를 기준으로 상대 움직임을 표시합니다. 시작 자세가 다를 수 있습니다.")
 		if needs_retarget:
 			native_clips[name] = true
 			notes.append("Godot 리타게팅을 적용했습니다. 골격·체형 차이로 자세나 발 위치가 정확하지 않을 수 있습니다.")

@@ -228,6 +228,18 @@ func check_log_settings_button():
   await frames(2)
   check(ProjectSettings.get_setting("addons/motion_preview/developer/save_performance_logs"), "폴더 버튼 추가 후 로그 저장 체크박스 편집 유지")
   found.enabled_toggle.set_pressed(false)
+ var import_property_script = preload("res://addons/motion_preview/import_settings_property.gd")
+ var import_property: EditorProperty
+ for node in inspector.find_children("*", "EditorProperty", true, false):
+  if node.get_script() == import_property_script:
+   import_property = node
+   break
+ check(import_property != null and import_property.apply_button.text == "기존 모션 FBX에 적용" and import_property.enabled_toggle.button_pressed, "프로젝트 설정에 기본 true인 자동 RESET 옵션과 일괄 적용 버튼 표시")
+ if import_property != null:
+  import_property.enabled_toggle.set_pressed(false)
+  await frames(2)
+  check(not ProjectSettings.get_setting("addons/motion_preview/import/auto_import_rest_as_reset", true), "자동 RESET 옵션을 프로젝트 설정에서 옵트아웃")
+  import_property.enabled_toggle.set_pressed(true)
  inspector.queue_free()
  await frames(2)
 
@@ -331,11 +343,11 @@ func run():
    preview.update_models(preview.model_paths)
    check(preview.model == previous_model, "목록 갱신 시 변경 없는 모델 인스턴스 재사용")
    var binding = preload("res://addons/motion_preview/motion_binding.gd")
-   var first = binding._model_skeleton("res://fixture_model.glb")
-   var second = binding._model_skeleton("res://fixture_model.glb")
-   check(first is Skeleton3D and second is Skeleton3D and first != second and first.get_child_count() == 0, "기준 모델 캐시는 메시 없이 독립 골격을 반환")
+   var first = binding._snapshot(preview.skeleton).instantiate()
+   var second = binding._snapshot(preview.skeleton).instantiate()
+   check(first is Skeleton3D and second is Skeleton3D and first != second and first.get_child_count() == 0, "골격 스냅샷은 메시 없이 독립 골격을 반환")
    first.set_bone_pose_rotation(0, Quaternion(Vector3.UP, 0.8))
-   check(second.get_bone_pose_rotation(0).angle_to(first.get_bone_pose_rotation(0)) > 0.1, "캐시에서 복원한 골격 사이에 자세를 공유하지 않음")
+   check(second.get_bone_pose_rotation(0).angle_to(first.get_bone_pose_rotation(0)) > 0.1, "스냅샷에서 복원한 골격 사이에 자세를 공유하지 않음")
    first.free()
    second.free()
    preview.timeline.value = 0.5

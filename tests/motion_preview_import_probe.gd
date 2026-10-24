@@ -1,0 +1,124 @@
+@tool
+extends EditorPlugin
+
+const Policy = preload("res://addons/motion_preview/import_policy.gd")
+const Binding = preload("res://addons/motion_preview/motion_binding.gd")
+const Rest = preload("res://addons/motion_preview/rest_pose.gd")
+var failures := 0
+var checks := 0
+var events := {}
+
+func _enter_tree() -> void:
+	run.call_deferred()
+
+func check(ok: bool, message: String) -> void:
+	checks += 1
+	if not ok: failures += 1
+	print("IMPORT_POLICY ", "PASS " if ok else "FAIL ", message)
+
+func frames(count: int) -> void:
+	for index in count: await get_tree().process_frame
+
+func find_host(node: Node) -> Node:
+	if node.get_script() != null and node.get_script().resource_path == "res://addons/motion_preview/plugin.gd": return node
+	for child in node.get_children():
+		var found := find_host(child)
+		if found != null: return found
+	return null
+
+func option(path: String) -> bool:
+	var config := ConfigFile.new()
+	config.load(path + ".import")
+	return config.get_value("params", Policy.OPTION, false)
+
+func imported(path: String) -> AnimationLibrary:
+	return ResourceLoader.load(path, "AnimationLibrary", ResourceLoader.CACHE_MODE_IGNORE) as AnimationLibrary
+
+func scan_copy(name: String) -> void:
+	DirAccess.copy_absolute("res://legacy.FBX", "res://" + name + ".FBX")
+	var config := ConfigFile.new()
+	config.set_value("remap", "importer", "animation_library")
+	config.set_value("remap", "type", "AnimationLibrary")
+	config.set_value("params", "nodes/import_as_skeleton_bones", true)
+	config.set_value("params", Policy.OPTION, false)
+	config.set_value("params", "fbx/importer", 0)
+	config.save("res://" + name + ".FBX.import")
+	get_editor_interface().get_resource_filesystem().scan()
+	await frames(60)
+
+func run() -> void:
+	await frames(20)
+	var host := find_host(get_tree().root)
+	check(host != null, "plugin loaded")
+	if host == null:
+		get_tree().quit(1); return
+	var filesystem := get_editor_interface().get_resource_filesystem()
+	filesystem.resources_reimported.connect(func(paths: PackedStringArray):
+		for path in paths: events[path] = events.get(path, 0) + 1)
+	check(ProjectSettings.get_setting(Policy.SETTING, false), "automatic policy defaults true")
+	check(not option("res://legacy.FBX") and not imported("res://legacy.FBX").has_animation(&"RESET"), "installation leaves existing imports unchanged")
+	var property := preload("res://addons/motion_preview/import_settings_property.gd").new()
+	property.host = host
+	get_editor_interface().get_base_control().add_child(property)
+	property.apply_button.pressed.emit()
+	await frames(90)
+	check(option("res://legacy.FBX") and imported("res://legacy.FBX").has_animation(&"RESET"), "bulk button updates options and imports real RESET")
+	check(not option("res://model.FBX"), "scene imports are excluded")
+	var config := ConfigFile.new()
+	config.load("res://legacy.FBX.import")
+	check(config.get_value("params", "animation/fps") == 24, "unrelated import options remain unchanged")
+	var library := imported("res://legacy.FBX")
+	check(library.get_animation(&"RESET").has_meta(Rest.META), "same-import skeleton data saved on RESET")
+	var skeleton := Binding.source_scene(library)
+	check(skeleton != null and skeleton.get_meta("_motion_preview_rest_mode", "") == "imported_RESET", "preview reads RESET reference without raw FBX/model guessing")
+	if skeleton != null: skeleton.free()
+	property.queue_free()
+	for dialog in get_editor_interface().get_base_control().find_children("*", "AcceptDialog", true, false):
+		if dialog.title == "Motion Preview — RESET 적용": dialog.queue_free()
+	ProjectSettings.set_setting(Policy.SETTING, false)
+	await scan_copy("optout")
+	check(not option("res://optout.FBX") and not imported("res://optout.FBX").has_animation(&"RESET"), "opt-out preserves per-file false")
+	ProjectSettings.set_setting(Policy.SETTING, true)
+	await scan_copy("automatic")
+	await frames(90)
+	check(option("res://automatic.FBX") and imported("res://automatic.FBX").has_animation(&"RESET"), "new AnimationLibrary FBX automatically enables RESET")
+	check(events.get("res://automatic.FBX", 0) <= 2, "automatic reimport does not loop")
+	check(not option("res://optout.FBX"), "enabling policy does not bulk-change old files")
+	config.load("res://automatic.FBX.import")
+	config.set_value("params", Policy.OPTION, false)
+	config.save("res://automatic.FBX.import")
+	filesystem.reimport_files(PackedStringArray(["res://automatic.FBX"]))
+	await frames(90)
+	check(option("res://automatic.FBX"), "enabled policy overrides a later per-file false")
+	# Exercise Godot's actual scene retarget stage, not just raw FBX tracks.
+	library = imported("res://automatic.FBX")
+	skeleton = Binding.source_scene(library)
+	var bone_map := BoneMap.new()
+	bone_map.profile = SkeletonProfileHumanoid.new()
+	var roles := Binding.Mapping.for_skeleton(skeleton)
+	for role in roles:
+		bone_map.set_skeleton_bone_name(role, roles[role])
+	var skeleton_path: String = library.get_animation(&"RESET").get_meta(Rest.META).paths[0]
+	skeleton.free()
+	config.load("res://automatic.FBX.import")
+	config.set_value("params", "_subresources", {"nodes": {"PATH:" + skeleton_path: {
+		"retarget/bone_map": bone_map, "retarget/bone_renamer/rename_bones": true,
+		"retarget/rest_fixer/retarget_method": 2, "retarget/rest_fixer/normalize_position_tracks": true}}})
+	config.save("res://automatic.FBX.import")
+	filesystem.reimport_files(PackedStringArray(["res://automatic.FBX"]))
+	await frames(30)
+	library = imported("res://automatic.FBX")
+	skeleton = Binding.source_scene(library)
+	check(skeleton != null and skeleton.find_bone("LeftUpperArm") >= 0 and skeleton.motion_scale > 0, "RESET reference survives Godot bone renaming and normalized retarget import")
+	if skeleton != null: skeleton.free()
+	var preview := preload("res://addons/motion_preview/preview_control.gd").new()
+	preview.library = imported("res://automatic.FBX")
+	get_editor_interface().get_base_control().add_child(preview)
+	check("RESET" not in preview.get_motions() and not preview.get_motions().is_empty(), "RESET hidden from normal motion menu")
+	preview.queue_free()
+	ProjectSettings.set_setting(Policy.SETTING, false)
+	host.apply_reset_to_existing()
+	await frames(90)
+	check(option("res://optout.FBX") and imported("res://optout.FBX").has_animation(&"RESET"), "explicit bulk action also works with automatic policy disabled")
+	print("IMPORT_POLICY_COMPLETE checks=%d failures=%d" % [checks, failures])
+	get_tree().quit(1 if failures else 0)
