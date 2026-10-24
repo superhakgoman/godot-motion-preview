@@ -110,3 +110,5 @@ godot --headless --path . --quit-after 1200 --script tests/motion_preview_api.gd
 See the [1.2.0 design and validation record](docs/1.2.0-api-release.md) (Korean).
 
 Run `python3 release.py` to generate the installation ZIP and its SHA-256 checksum together. Identical source files produce identical ZIPs regardless of modification times.
+
+When file logging is enabled, `performance.log` also records playback errors, omitted bones, and bone mappings, including model/animation paths and bone names. Events are recorded during binding and when warnings/errors occur, rather than every frame. This does not visually detect frozen limbs.

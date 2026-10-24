@@ -23,8 +23,15 @@ static func write(message: String) -> void:
 	var line := "%s | %s\n" % [Time.get_datetime_string_from_system(), message.left(8192).replace("\n", " ").replace("\r", " ")]
 	if not _append(line):
 		if not _reported_error:
-			push_warning("Motion Preview: 성능 로그를 저장할 수 없습니다: " + ProjectSettings.globalize_path(DIRECTORY))
+			push_warning("Motion Preview: 진단·성능 로그를 저장할 수 없습니다: " + ProjectSettings.globalize_path(DIRECTORY))
 			_reported_error = true
+
+
+# Diagnostic events share the opt-in setting and rotation budget with timings.
+static func diagnostic(event: String, details: Dictionary) -> void:
+	if not ProjectSettings.get_setting(SETTING, false):
+		return
+	write("diagnostic " + JSON.stringify({"event": event, "details": details}))
 
 
 static func _append(line: String) -> bool:

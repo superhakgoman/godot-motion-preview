@@ -812,6 +812,13 @@ func _reframe_after_resize() -> void:
 
 
 func _set_status(message: String, severity: String = "info") -> void:
+	if severity in ["warning", "error"]:
+		var selected := String(get_selected_motion())
+		if selected.is_empty() and clip_menu != null and clip_menu.selected >= 0:
+			selected = clip_menu.get_item_text(clip_menu.selected)
+		PerformanceLog.diagnostic("preview_issue", {"severity": severity, "message": message,
+			"model": preferred_model, "library": library.resource_path if library != null else "",
+			"clip": selected, "prepared": _prepared})
 	status.text = message
 	status.remove_theme_color_override("font_color")
 	if severity == "error":

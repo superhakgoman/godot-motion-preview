@@ -194,11 +194,13 @@ func check_file_logging():
  check(not ProjectSettings.get_setting(logger.SETTING, true), "개발자 파일 로그는 기본 off")
  ProjectSettings.set_setting(logger.SETTING, true)
  logger.write("file logging probe")
+ logger.diagnostic("test_issue", {"bone": "LeftArm", "clip": "test"})
  var path: String = logger.DIRECTORY.path_join(logger.FILE_NAME)
- check(FileAccess.file_exists(path) and FileAccess.get_file_as_string(path).contains("file logging probe"), "옵션을 켜면 로그를 파일에 자동 저장")
+ check(FileAccess.file_exists(path) and FileAccess.get_file_as_string(path).contains("file logging probe") and FileAccess.get_file_as_string(path).contains("test_issue") and FileAccess.get_file_as_string(path).contains("LeftArm"), "옵션을 켜면 로그를 파일에 자동 저장")
  var before := FileAccess.get_file_as_string(path)
  ProjectSettings.set_setting(logger.SETTING, false)
  logger.write("disabled logging probe")
+ logger.diagnostic("disabled_issue", {"bone": "RightArm"})
  check(FileAccess.get_file_as_string(path) == before, "옵션을 끄면 즉시 파일 기록 중단")
  var rotated := true
  for index in 5:

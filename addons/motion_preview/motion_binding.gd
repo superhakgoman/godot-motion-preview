@@ -200,6 +200,7 @@ static func bind(source: AnimationLibrary, skeleton: Skeleton3D, root: Node, sou
 	var errors := {}
 	var warnings := {}
 	var native_clips := {}
+	var omitted_bones := {}
 	var source_roles := Mapping.for_skeleton(source_skeleton, source_map) if source_skeleton != null else {}
 	var target_roles := Mapping.for_skeleton(skeleton, target_map)
 	var bridge: Node3D
@@ -229,6 +230,7 @@ static func bind(source: AnimationLibrary, skeleton: Skeleton3D, root: Node, sou
 					var dst_parent_name := skeleton.get_bone_name(dst_parent) if dst_parent >= 0 else ""
 					if src_parent_name != dst_parent_name or not source_skeleton.get_bone_rest(src).is_equal_approx(skeleton.get_bone_rest(dst)):
 						needs_retarget = true
+		omitted_bones[name] = missing
 		if needs_retarget:
 			var issue := Mapping.validate(source_skeleton, source_roles)
 			if issue.is_empty():
@@ -274,6 +276,8 @@ static func bind(source: AnimationLibrary, skeleton: Skeleton3D, root: Node, sou
 			animation.track_set_path(track, NodePath("%s:%s" % [root.get_path_to(destination), destination_bone]))
 			if not needs_retarget or (bone in source_roles.values() and bone not in unavailable):
 				tracks += animation.track_get_key_count(track)
+		if needs_retarget:
+			omitted_bones[name] = unavailable
 		if errors.has(name):
 			continue
 		if tracks == 0:
@@ -298,6 +302,27 @@ static func bind(source: AnimationLibrary, skeleton: Skeleton3D, root: Node, sou
 			warnings[name] = "경고: " + " ".join(notes)
 		animation.loop_mode = Animation.LOOP_LINEAR
 		library.add_animation(name, animation)
+	if ProjectSettings.get_setting(PerformanceLog.SETTING, false) and (not errors.is_empty() or not warnings.is_empty()):
+		PerformanceLog.diagnostic("binding_context", {"source": source.resource_path, "target": root.scene_file_path,
+			"source_skeleton_available": source_skeleton != null, "target_bone_count": skeleton.get_bone_count(),
+			"clip_count": source.get_animation_list().size(), "errors": errors.size(), "warnings": warnings.size()})
+		for name in source.get_animation_list():
+			if not errors.has(name) and not warnings.has(name):
+				continue
+			PerformanceLog.diagnostic("binding_issue", {"clip": name, "error": errors.get(name, ""),
+				"warning": warnings.get(name, ""), "retargeted": native_clips.has(name)})
+			for bone in omitted_bones.get(name, []):
+				PerformanceLog.diagnostic("omitted_bone", {"clip": name, "bone": bone, "role": Mapping.role(bone)})
+		# One entry per bone avoids truncating large skeletons into an unreadable line.
+		for rig in [source_skeleton, skeleton]:
+			if rig == null:
+				continue
+			var roles: Dictionary = source_roles if rig == source_skeleton else target_roles
+			for index in rig.get_bone_count():
+				var bone := String(rig.get_bone_name(index))
+				PerformanceLog.diagnostic("bone_mapping", {"side": "source" if rig == source_skeleton else "target",
+					"bone": bone, "role": roles.find_key(bone) if bone in roles.values() else "",
+					"parent": rig.get_bone_parent(index)})
 	return {"library": library, "errors": errors, "warnings": warnings, "bridge": bridge, "native_clips": native_clips}
 
 
