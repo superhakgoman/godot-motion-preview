@@ -43,14 +43,20 @@ static func skeleton_from_reset(library: AnimationLibrary) -> Skeleton3D:
 	var data: Variant = reset.get_meta(META, null)
 	if not data is Dictionary or not data.get("names") is PackedStringArray or not data.get("parents") is PackedInt32Array or not data.get("rests") is Array or not data.get("paths") is PackedStringArray or not data.get("space") is Transform3D:
 		return null
+	var scale_value: Variant = data.get("motion_scale")
+	if not scale_value is float and not scale_value is int:
+		return null
+	var motion_scale := float(scale_value)
+	if not is_finite(motion_scale) or motion_scale <= 0 or not _valid_transform(data.space):
+		return null
 	var count: int = data.names.size()
-	if count == 0 or count > 4096 or data.parents.size() != count or data.rests.size() != count or float(data.get("motion_scale", 0)) <= 0:
+	if count == 0 or count > 4096 or data.parents.size() != count or data.rests.size() != count:
 		return null
 	var skeleton := Skeleton3D.new()
 	skeleton.transform = data.space
-	skeleton.motion_scale = float(data.motion_scale)
+	skeleton.motion_scale = motion_scale
 	for index in count:
-		if data.names[index].is_empty() or skeleton.find_bone(data.names[index]) >= 0 or not data.rests[index] is Transform3D or data.parents[index] < -1 or data.parents[index] >= count or data.parents[index] == index:
+		if data.names[index].is_empty() or ":" in data.names[index] or "/" in data.names[index] or skeleton.find_bone(data.names[index]) >= 0 or (not data.rests[index] is Transform3D or not _valid_transform(data.rests[index])) or data.parents[index] < -1 or data.parents[index] >= count or data.parents[index] == index:
 			skeleton.free()
 			return null
 		skeleton.add_bone(data.names[index])
@@ -74,6 +80,12 @@ static func skeleton_from_reset(library: AnimationLibrary) -> Skeleton3D:
 		if path.is_absolute() or String(path.get_concatenated_names()) not in data.paths or index < 0 or reset.track_get_key_count(track) == 0:
 			skeleton.free()
 			return null
+		for key in reset.track_get_key_count(track):
+			var value: Variant = reset.track_get_key_value(track, key)
+			var rotation := reset.track_get_type(track) == Animation.TYPE_ROTATION_3D
+			if (rotation and (not value is Quaternion or not value.is_finite() or not value.is_normalized())) or (not rotation and (not value is Vector3 or not value.is_finite())):
+				skeleton.free()
+				return null
 		var rest := skeleton.get_bone_rest(index)
 		match reset.track_get_type(track):
 			Animation.TYPE_POSITION_3D:
@@ -82,6 +94,9 @@ static func skeleton_from_reset(library: AnimationLibrary) -> Skeleton3D:
 				rest.basis = Basis(reset.rotation_track_interpolate(track, 0.0)) * Basis.from_scale(rest.basis.get_scale())
 			Animation.TYPE_SCALE_3D:
 				rest.basis = Basis(rest.basis.get_rotation_quaternion()) * Basis.from_scale(reset.scale_track_interpolate(track, 0.0))
+		if not _valid_transform(rest):
+			skeleton.free()
+			return null
 		skeleton.set_bone_rest(index, rest)
 		found = true
 	if not found:
@@ -90,6 +105,10 @@ static func skeleton_from_reset(library: AnimationLibrary) -> Skeleton3D:
 	skeleton.reset_bone_poses()
 	skeleton.set_meta("_motion_preview_rest_mode", "imported_RESET")
 	return skeleton
+
+
+static func _valid_transform(value: Transform3D) -> bool:
+	return value.is_finite() and value.basis.determinant() != 0.0
 
 
 static func _bone_track(animation: Animation, track: int) -> bool:

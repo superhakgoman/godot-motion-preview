@@ -159,5 +159,12 @@ func run() -> void:
 	Policy._save_backup(backup)
 	check(Policy.enable_reset("res://legacy.FBX") == "error" and not option("res://legacy.FBX"), "invalid existing recovery data prevents option mutation")
 	Policy.finish_restore(PackedStringArray(["res://legacy.FBX"]))
+	check(not Policy.eligible(ProjectSettings.globalize_path("res://legacy.FBX")) and not Policy.eligible("res://.security/../legacy.FBX"), "absolute and traversal paths cannot change import options")
+	if FileAccess.file_exists("res://.security/linked.FBX.import"):
+		check(Policy.enable_reset("res://.security/linked.FBX") == "ineligible" and not option("res://legacy.FBX"), "symlinked import configuration cannot redirect writes")
+	if FileAccess.file_exists("res://.security/source.FBX"):
+		check(not Policy.eligible("res://.security/source.FBX"), "symlinked source files are not policy targets")
+	if FileAccess.file_exists("res://.security/directory/legacy.FBX"):
+		check(not Policy.eligible("res://.security/directory/legacy.FBX"), "symlinked ancestor directories are not policy targets")
 	print("IMPORT_POLICY_COMPLETE checks=%d failures=%d" % [checks, failures])
 	get_tree().quit(1 if failures else 0)

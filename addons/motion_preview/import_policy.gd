@@ -12,8 +12,23 @@ static func register_setting() -> void:
 	ProjectSettings.add_property_info({"name": SETTING, "type": TYPE_BOOL})
 
 
+static func _local_project_path(path: String) -> bool:
+	if not path.begins_with("res://") or path != path.simplify_path() or "\\" in path:
+		return false
+	var directory := DirAccess.open("res://")
+	if directory == null:
+		return false
+	var parts := path.trim_prefix("res://").split("/")
+	for index in parts.size():
+		if parts[index].is_empty() or parts[index] in [".", ".."] or directory.is_link(parts[index]):
+			return false
+		if index < parts.size() - 1 and directory.change_dir(parts[index]) != OK:
+			return false
+	return true
+
+
 static func eligible(path: String) -> bool:
-	if path.get_extension().to_lower() != "fbx" or not FileAccess.file_exists(path):
+	if not _local_project_path(path) or not _local_project_path(path + ".import") or path.get_extension().to_lower() != "fbx" or not FileAccess.file_exists(path):
 		return false
 	var config := ConfigFile.new()
 	return config.load(path + ".import") == OK and config.get_value("remap", "importer", "") == "animation_library"

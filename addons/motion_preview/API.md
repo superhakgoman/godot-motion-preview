@@ -95,9 +95,9 @@ For a safe standalone model use `set_animation_library(source)`, add the control
 
 Replace overrides of `_load_model`, `_play_clip`, `_clear_model`, `_update_retarget` with adapter preparation plus `set_prepared_target`. Preserve the adapter's engine RetargetModifier and remove original mixers. Collect all original library namespaces, retain the animation root within the detached appearance, then hand over the root. For an initially paused timing editor call `pause()` after handoff/selection.
 
-Replace `player.get_animation_list()` with `get_motions()`, menu manipulation with `select_motion()`, `play_button.disabled` with `not has_motion()`, `playing` with `is_playing()`, `timeline.max_value` with `get_duration()`, `timeline.value` with `get_time()`/`seek_time()`, and UI hiding/material field access with the public setters. Replace per-frame UI polling with `time_changed`, `motion_changed` and `playback_changed`. Game-specific timing markers, AttackSkill properties, visual extraction paths and XZ range overlays stay in the consuming adapter/editor.
+Replace `player.get_animation_list()` with `get_motions()`, menu manipulation with `select_motion()`, `play_button.disabled` with `not has_motion()`, `playing` with `is_playing()`, `timeline.max_value` with `get_duration()`, `timeline.value` with `get_time()`/`seek_time()`, and UI hiding/material field access with the public setters. Replace per-frame UI polling with `time_changed`, `motion_changed` and `playback_changed`. Game-specific timing markers, resource properties, visual extraction paths and XZ range overlays stay in the consuming adapter/editor.
 
-The plugin does not implement combat, gameplay events, marker persistence, UndoRedo or a universal skill schema. Paladin migration and tests against its purchased character/motions are separate follow-up work; only generated fixtures were used to verify this API release.
+The plugin does not implement combat, gameplay events, marker persistence, UndoRedo or a universal skill schema. Consumer migrations and tests against production characters/motions belong to the consuming project; the embedding API was validated with generated fixtures.
 
 ## Imported RESET references (1.3.0)
 
@@ -108,3 +108,5 @@ The scene import plugin stores immutable skeleton topology, coordinate transform
 Automatic reference-model discovery and first-node-pose retarget fallback were removed. Missing reliable reference data is reported instead of inferring a rest from another project model. Explicit source skeletons passed to internal binding tests and original bind data present in source files remain supported.
 
 Import-option recovery stores the original presence/value of the specific option before its first change. The restore button disables enforcement, restores only recorded options and reimports. Originally true files and unrelated later settings are preserved; failed entries remain available for retry. Recovery does not roll back game scenes, code, or changes made before the recovery record existed.
+
+Import-policy writes are limited to canonical project-local resource paths. Symlinked sources, sidecars and ancestor directories are excluded. RESET metadata is data-only and is validated before skeleton reconstruction. Project resources and prepared adapters remain trusted input; these checks do not make a general-purpose asset sandbox.

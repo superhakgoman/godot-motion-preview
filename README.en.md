@@ -10,7 +10,7 @@ A Godot editor plugin that previews an animation library (`AnimationLibrary`) on
 |---|---|
 | ![Inspector preview of a waving animation](docs/images/motion-preview-wave.png) | ![Inspector preview of a walking animation](docs/images/motion-preview-walk.png) |
 
-Actual Inspector captures using a model created for this demo. [View the full editor screenshot](docs/images/motion-preview-editor.png)
+Demo Inspector captures from an earlier release. Current model selection uses FBX and GLB. [View the full editor screenshot](docs/images/motion-preview-editor.png)
 
 ## Installing and using it in a game project
 
@@ -20,6 +20,8 @@ Actual Inspector captures using a model created for this demo. [View the full ed
 2. Place the `motion_preview` folder inside your game project's `addons/` folder. The resulting path must be `addons/motion_preview/plugin.cfg`.
 3. In Godot, open **Project → Project Settings → Plugins** and enable **Motion Preview**.
 4. Wait for Godot to finish importing your models and animations.
+
+Version 1.3.0 enables automatic `Import Rest as RESET` for FBX AnimationLibraries by default. Existing files are bulk-converted only through the explicit button. Consumers enumerating clips or assuming a single clip should distinguish `RESET` and namespaced `library/RESET` entries from playable motions. Opt out with the project setting `auto_import_rest_as_reset`.
 
 Disable the plugin or close the editor before updating or removing it. To update, replace the existing plugin folder with the new version.
 
@@ -132,3 +134,5 @@ The import plugin stores immutable skeleton topology, transforms and motion scal
 RESET records the rest pose Godot read; it cannot recover authoring bind data absent from the original file. Missing reliable reference data produces an error rather than another model/first animated pose being guessed. Standardized motion libraries must still be paired with appropriately prepared models.
 
 Run `python3 tests/check_motion_preview_imports.py /path/to/motion.FBX` for actual FBX import-policy integration checks in a disposable project. The source FBX and original project are unchanged.
+
+Import policy and recovery accept only canonical project-local `res://` paths and skip symbolic links in source files, import sidecars and ancestor directories. RESET reference metadata is validated for finite numeric values and valid skeleton structure before use.

@@ -25,6 +25,16 @@ def main():
         for name, importer, kind in [("legacy", "animation_library", "AnimationLibrary"), ("model", "scene", "PackedScene"), ("original_true", "animation_library", "AnimationLibrary")]:
             shutil.copyfile(args.fbx, target / (name + ".FBX"))
             (target / (name + ".FBX.import")).write_text(f'[remap]\nimporter="{importer}"\ntype="{kind}"\n[params]\nnodes/import_as_skeleton_bones=true\nanimation/import_rest_as_RESET={str(name == "original_true").lower()}\nanimation/fps=24\nfbx/importer=0\n')
+        security = target / ".security"
+        security.mkdir()
+        shutil.copyfile(args.fbx, security / "linked.FBX")
+        try:
+            (security / "linked.FBX.import").symlink_to("../legacy.FBX.import")
+            (security / "source.FBX").symlink_to("../legacy.FBX")
+            (security / "source.FBX.import").symlink_to("../legacy.FBX.import")
+            (security / "directory").symlink_to("..", target_is_directory=True)
+        except OSError:
+            pass  # Symlink creation can require privileges on some hosts.
         command = [args.engine, "--headless", "--editor", "--path", str(target), "--quit-after", "2400", "--log-file", str(target / "editor.log")]
         try:
             result = subprocess.run(command, capture_output=True, text=True, timeout=90)

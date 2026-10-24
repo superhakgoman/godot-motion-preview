@@ -10,7 +10,7 @@ Godot에서 애니메이션 라이브러리(`AnimationLibrary`)를 선택하면 
 |---|---|
 | ![손 흔들기 애니메이션을 확인하는 인스펙터](docs/images/motion-preview-wave.png) | ![걷기 애니메이션을 확인하는 인스펙터](docs/images/motion-preview-walk.png) |
 
-데모 모델을 사용한 실제 인스펙터 화면입니다. [전체 에디터 화면 보기](docs/images/motion-preview-editor.png)
+이전 버전에서 촬영한 데모 인스펙터 화면입니다. 현재 버전의 모델 선택은 FBX·GLB를 사용합니다. [전체 에디터 화면 보기](docs/images/motion-preview-editor.png)
 
 ## 게임 프로젝트에서 설치하고 사용하기
 
@@ -20,6 +20,8 @@ Godot에서 애니메이션 라이브러리(`AnimationLibrary`)를 선택하면 
 2. `motion_preview` 폴더를 게임 프로젝트의 `addons/`에 넣습니다. 최종 경로는 `addons/motion_preview/plugin.cfg`가 되어야 합니다.
 3. Godot에서 **프로젝트 → 프로젝트 설정 → 플러그인**을 열고 **Motion Preview**를 켭니다.
 4. 모델과 애니메이션의 임포트가 끝날 때까지 기다립니다.
+
+1.3.0에서는 FBX AnimationLibrary의 `Import Rest as RESET` 자동 적용이 기본으로 켜집니다. 기존 파일의 일괄 적용은 별도 버튼으로 실행합니다. 게임 코드에서 애니메이션 목록을 순회하거나 단일 클립을 가정한다면 `RESET` 및 `라이브러리/RESET`을 실제 모션과 구분해 주세요. 자동 적용은 프로젝트 설정의 `auto_import_rest_as_reset`으로 끌 수 있습니다.
 
 업데이트하거나 제거하기 전에는 플러그인을 끄거나 에디터를 닫습니다. 업데이트할 때는 기존 플러그인 폴더를 새 버전으로 교체합니다.
 
@@ -150,3 +152,5 @@ CAT 형식의 번호 접두어·팔다리 이름과 Biped 번호 손가락을 �
 RESET은 Godot이 읽어낸 기준 자세이며, 원본 파일에 없는 제작자의 bind 자세를 복원하는 기능은 아닙니다. 기준 정보가 없으면 다른 모델에서 추측하지 않고 오류를 표시합니다. Godot 버전과 실제 FBX에 대한 임포트 검증이 필요하며, 정상화된 모션은 같은 기준으로 준비된 모델과 함께 사용해야 합니다.
 
 실제 테스트용 FBX를 임시 프로젝트에 복사해 자동 적용·옵트아웃·버튼·본 이름 변경·정규화 임포트를 검사하려면 `python3 tests/check_motion_preview_imports.py /path/to/motion.FBX`를 실행합니다. 원본 FBX와 원래 프로젝트는 변경하지 않습니다.
+
+임포트 정책과 설정 복원은 프로젝트 내부의 정규 `res://` 경로만 대상으로 하며, 원본 파일·`.import` 파일·상위 폴더가 심볼릭 링크인 경우에는 변경하지 않습니다. RESET 메타데이터는 수치·골격 구조를 검사한 뒤 사용합니다.

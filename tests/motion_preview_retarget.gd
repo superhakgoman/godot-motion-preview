@@ -196,6 +196,22 @@ func check_reset_reference(root: Node3D) -> void:
 	preload("res://addons/motion_preview/rest_pose.gd").capture(player, reset)
 	var source := Binding.source_scene(library) as Skeleton3D
 	check(source != null and source.get_bone_rest(0).is_equal_approx(original.get_bone_rest(0)), "RESET reference retains rest rather than first animated frame")
+	var rest_helper := preload("res://addons/motion_preview/rest_pose.gd")
+	var original_data: Dictionary = reset.get_meta(rest_helper.META).duplicate(true)
+	for kind in ["scale_type", "infinite_scale", "infinite_space", "invalid_bone", "infinite_rest"]:
+		var invalid := original_data.duplicate(true)
+		match kind:
+			"scale_type": invalid.motion_scale = "invalid"
+			"infinite_scale": invalid.motion_scale = INF
+			"infinite_space": invalid.space = Transform3D(Basis.IDENTITY, Vector3(INF, 0, 0))
+			"invalid_bone": invalid.names[0] = "invalid/bone"
+			"infinite_rest": invalid.rests[0] = Transform3D(Basis.IDENTITY, Vector3(INF, 0, 0))
+		reset.set_meta(rest_helper.META, invalid)
+		var rejected := rest_helper.skeleton_from_reset(library)
+		check(rejected == null, "malformed RESET reference rejected: " + kind)
+		if rejected != null: rejected.free()
+	reset.set_meta(rest_helper.META, original_data)
+
 	var target := humanoid("", 2.0)
 	root.add_child(target)
 	var bound := Binding.bind(library, target, root, source)

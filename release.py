@@ -16,6 +16,8 @@ def main() -> None:
     args = parser.parse_args()
     name = "motion_preview"
     source = root / "addons" / name
+    if source.is_symlink() or source.parent.is_symlink():
+        parser.error("배포 소스 폴더의 심볼릭 링크는 허용하지 않습니다.")
     config = configparser.ConfigParser()
     config.read(source / "plugin.cfg", encoding="utf-8")
     version = config["plugin"]["version"].strip('"')
