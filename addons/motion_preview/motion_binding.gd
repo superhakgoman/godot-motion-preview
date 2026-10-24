@@ -30,8 +30,10 @@ static func clear_caches() -> void:
 static func _snapshot(skeleton: Skeleton3D) -> PackedScene:
 	var copy := Skeleton3D.new()
 	copy.name = skeleton.name
-	copy.transform = skeleton.transform
+	copy.transform = preload("native_retarget.gd").skeleton_space(skeleton)
 	copy.motion_scale = skeleton.motion_scale
+	if skeleton.has_meta("_motion_preview_rest_mode"):
+		copy.set_meta("_motion_preview_rest_mode", skeleton.get_meta("_motion_preview_rest_mode"))
 	for index in skeleton.get_bone_count():
 		copy.add_bone(skeleton.get_bone_name(index))
 	for index in skeleton.get_bone_count():
@@ -134,8 +136,11 @@ static func _read_source_scene(source: AnimationLibrary, model_paths: PackedStri
 	if skeletons.size() == 1 and not has_bind_pose:
 		var reference := _reference_model(source, skeletons[0], model_paths)
 		if reference != null:
+			skeletons_in(reference)[0].set_meta("_motion_preview_rest_mode", "bind_pose")
 			scene.free()
 			return reference
+	for rig in skeletons:
+		rig.set_meta("_motion_preview_rest_mode", "bind_pose" if has_bind_pose else "node_pose")
 	return scene
 
 
@@ -175,6 +180,27 @@ static func _reference_model(source: AnimationLibrary, original: Skeleton3D, mod
 			if expected_name != actual_name:
 				matches = false
 				break
+		# Matching names and hierarchy do not establish matching animation axes.
+		# A mesh export can bake an FBX axis correction into its root bind pose.
+		# Applying animation-only keys to that bind pose rotates the entire body.
+		if matches:
+			var checked_roots := {}
+			for bone in bones:
+				var src_index := original.find_bone(bone)
+				var dst_index := skeleton.find_bone(bone)
+				while original.get_bone_parent(src_index) >= 0:
+					src_index = original.get_bone_parent(src_index)
+				while skeleton.get_bone_parent(dst_index) >= 0:
+					dst_index = skeleton.get_bone_parent(dst_index)
+				if checked_roots.has(src_index):
+					continue
+				checked_roots[src_index] = true
+				var src_basis := original.get_bone_rest(src_index).basis
+				var dst_basis := skeleton.get_bone_rest(dst_index).basis
+				if not src_basis.is_equal_approx(dst_basis):
+					matches = false
+					PerformanceLog.diagnostic("reference_rejected", {"model": path, "bone": bone, "reason": "root bind axes differ from animation source"})
+					break
 		if not matches:
 			candidate.free()
 			continue
@@ -210,7 +236,7 @@ static func bind(source: AnimationLibrary, skeleton: Skeleton3D, root: Node, sou
 		var missing := PackedStringArray()
 		var tracks := 0
 		# 부모 관계나 기준 자세가 다르면 리타게팅 경로를 선택한다.
-		var needs_retarget := false
+		var needs_retarget := source_skeleton != null and not preload("native_retarget.gd").skeleton_space(source_skeleton).basis.is_equal_approx(preload("native_retarget.gd").skeleton_space(skeleton).basis)
 		for track in animation.get_track_count():
 			if not _is_bone_track(animation, track):
 				continue
@@ -273,6 +299,8 @@ static func bind(source: AnimationLibrary, skeleton: Skeleton3D, root: Node, sou
 			elif skeleton.find_bone(bone) < 0:
 				animation.remove_track(track)
 				continue
+			if needs_retarget and destination.get_bone_parent(destination.find_bone(destination_bone)) < 0:
+				bridge.transform_root_track(animation, track)
 			animation.track_set_path(track, NodePath("%s:%s" % [root.get_path_to(destination), destination_bone]))
 			if not needs_retarget or (bone in source_roles.values() and bone not in unavailable):
 				tracks += animation.track_get_key_count(track)
@@ -287,6 +315,8 @@ static func bind(source: AnimationLibrary, skeleton: Skeleton3D, root: Node, sou
 				errors[name] = "미리보기 불가: 모션과 모델 사이에 대응된 본의 움직임이 없습니다."
 			continue
 		var notes := PackedStringArray()
+		if needs_retarget and source_skeleton.get_meta("_motion_preview_rest_mode", "") == "node_pose":
+			notes.append("원본 bind 자세를 확인하지 못해 원본 노드 자세를 기준으로 상대 움직임을 표시합니다. 시작 자세가 다를 수 있습니다.")
 		if needs_retarget:
 			native_clips[name] = true
 			notes.append("Godot 리타게팅을 적용했습니다. 골격·체형 차이로 자세나 발 위치가 정확하지 않을 수 있습니다.")
@@ -304,7 +334,10 @@ static func bind(source: AnimationLibrary, skeleton: Skeleton3D, root: Node, sou
 		library.add_animation(name, animation)
 	if ProjectSettings.get_setting(PerformanceLog.SETTING, false) and (not errors.is_empty() or not warnings.is_empty()):
 		PerformanceLog.diagnostic("binding_context", {"source": source.resource_path, "target": root.scene_file_path,
-			"source_skeleton_available": source_skeleton != null, "target_bone_count": skeleton.get_bone_count(),
+			"source_skeleton_available": source_skeleton != null,
+			"source_rest_mode": source_skeleton.get_meta("_motion_preview_rest_mode", "provided") if source_skeleton != null else "unavailable",
+			"source_space": str(preload("native_retarget.gd").skeleton_space(source_skeleton)) if source_skeleton != null else "",
+			"target_space": str(preload("native_retarget.gd").skeleton_space(skeleton)), "target_bone_count": skeleton.get_bone_count(),
 			"clip_count": source.get_animation_list().size(), "errors": errors.size(), "warnings": warnings.size()})
 		for name in source.get_animation_list():
 			if not errors.has(name) and not warnings.has(name):

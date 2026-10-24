@@ -13,7 +13,7 @@ static func _load_rules() -> Dictionary:
 	if not data is Dictionary or data.get("version") != 1:
 		push_error("Motion Preview: humanoid_aliases.json 형식이 올바르지 않습니다.")
 		return {}
-	for key in ["strip_tokens", "strip_prefixes", "separators", "sided_roles", "finger_segments", "thumb_segments"]:
+	for key in ["strip_tokens", "strip_prefixes", "separators", "sided_roles", "finger_segments", "thumb_segments", "numbered_prefixes", "numbered_fingers"]:
 		if not data.get(key) is Array:
 			push_error("Motion Preview: 본 이름 규칙의 배열이 없습니다: " + key)
 			return {}
@@ -32,6 +32,16 @@ static func role(bone: String) -> String:
 	if rules.is_empty():
 		return ""
 	var name := bone.to_lower().get_slice(":", bone.count(":"))
+	for prefix in rules.get("numbered_prefixes", []):
+		if name.begins_with(prefix):
+			var end: int = String(prefix).length()
+			while end < name.length() and name.substr(end, 1).is_valid_int():
+				end += 1
+			if end > String(prefix).length():
+				name = name.substr(end)
+	for side_prefix in ["larm", "rarm", "lleg", "rleg"]:
+		if name.begins_with(side_prefix):
+			name = name.left(1) + "_" + name.substr(1)
 	for token in rules.strip_tokens:
 		name = name.replace(token, "")
 	for prefix in rules.strip_prefixes:
@@ -78,6 +88,16 @@ static func role(bone: String) -> String:
 		return side + result if result in rules.sided_roles and not side.is_empty() else ("" if result in rules.sided_roles else result)
 	if name.begins_with("hand"):
 		name = name.trim_prefix("hand")
+	# Biped Finger0..4 are thumb..little; the trailing 1/2 is the next segment.
+	if name.begins_with("finger"):
+		var digits := name.trim_prefix("finger")
+		if digits.length() in [1, 2] and digits.is_valid_int() and not side.is_empty():
+			var finger_index := int(digits.left(1))
+			var segment := int(digits.substr(1)) if digits.length() == 2 else 0
+			if finger_index >= 0 and finger_index < 5 and segment >= 0 and segment < 3:
+				var finger: String = rules.numbered_fingers[finger_index]
+				var segments: Array = rules.thumb_segments if finger_index == 0 else rules.finger_segments
+				return side + finger + String(segments[segment])
 	for finger in rules.fingers:
 		for alias in rules.fingers[finger]:
 			if name.begins_with(alias) and not side.is_empty():
@@ -124,17 +144,19 @@ static func for_skeleton(skeleton: Skeleton3D, map: BoneMap = null) -> Dictionar
 	for index in skeleton.get_bone_count():
 		names.append(skeleton.get_bone_name(index))
 	var result := unique_roles(names)
+	_cat_hubs(skeleton, result)
 	# Spine → Spine1 → Spine2는 번호 없는 본부터, spine_01 → 02 → 03은 1부터 시작한다.
 	# 실제 골격의 연결 순서로 몸통 본을 대응시킨다.
 	var hips: String = result.get("Hips", "")
 	var head: String = result.get("Head", "")
-	if not hips.is_empty() and not head.is_empty():
+	var endpoint: String = head if not head.is_empty() else result.get("UpperChest", "")
+	if not hips.is_empty() and not endpoint.is_empty():
 		var chain := PackedStringArray()
-		var index := skeleton.get_bone_parent(skeleton.find_bone(head))
+		var index := skeleton.get_bone_parent(skeleton.find_bone(head)) if not head.is_empty() else skeleton.find_bone(endpoint)
 		var hip_index := skeleton.find_bone(hips)
 		while index >= 0 and index != hip_index:
 			var name := skeleton.get_bone_name(index)
-			if name.to_lower().contains("spine") or name.to_lower().contains("chest"):
+			if name.to_lower().contains("spine") or name.to_lower().contains("chest") or name == result.get("UpperChest", ""):
 				chain.append(name)
 			index = skeleton.get_bone_parent(index)
 		if index == hip_index and chain.size() > 0 and chain.size() <= 3:
@@ -165,6 +187,20 @@ static func for_skeleton(skeleton: Skeleton3D, map: BoneMap = null) -> Dictionar
 			seen[bone] = key
 	_infer_chains(skeleton, valid)
 	return valid
+
+
+# CAT hub numbers alone are ambiguous. Require both semantic limb chains to
+# join that hub before assigning pelvis/chest; leave arbitrary Bone001 unnamed.
+static func _cat_hubs(skeleton: Skeleton3D, roles: Dictionary) -> void:
+	for pair in [["LeftUpperLeg", "RightUpperLeg", "Hips"], ["LeftShoulder", "RightShoulder", "UpperChest"]]:
+		if roles.get(pair[0], "") == "" or roles.get(pair[1], "") == "":
+			continue
+		var left := skeleton.get_bone_parent(skeleton.find_bone(roles[pair[0]]))
+		var right := skeleton.get_bone_parent(skeleton.find_bone(roles[pair[1]]))
+		if left >= 0 and left == right:
+			var name := String(skeleton.get_bone_name(left))
+			if name.to_lower().contains("hub") and roles.get(pair[2], "") == "":
+				roles[pair[2]] = name
 
 
 # 부분 골격의 미리보기를 위해 식별된 관절 사이의 조상 관계를 검사한다.

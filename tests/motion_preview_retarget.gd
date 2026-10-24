@@ -112,6 +112,9 @@ func check_partial_rigs(root: Node3D, original: Skeleton3D, target: Skeleton3D) 
 func check_structural_mapping() -> void:
 	check(Mapping.role("Bip01 L Thigh") == "LeftUpperLeg" and Mapping.role("Bip01 R Thigh") == "RightUpperLeg", "Biped space-separated side markers")
 	check(Mapping.role("mixamorig:LeftHandIndex1") == "LeftIndexProximal", "Mixamo hand-prefixed fingers")
+	check(Mapping.role("Character001LLeg1") == "LeftUpperLeg" and Mapping.role("Character001RArmPalm") == "RightHand", "CAT numbered prefix and semantic limb names")
+	check(Mapping.role("B_R_Finger0") == "RightThumbMetacarpal" and Mapping.role("B_L_Finger12") == "LeftIndexDistal", "Biped numbered fingers")
+	check(Mapping.role("Character001Hub002Bone001").is_empty(), "arbitrary CAT hub attachments are not guessed as head")
 	var model := humanoid("", 1.0)
 	var upper := model.find_bone("LeftUpperArm")
 	var lower := model.find_bone("LeftLowerArm")
@@ -221,6 +224,62 @@ func check_source_options() -> void:
 	skeleton = Binding.skeletons_in(scene)[0]
 	check(is_equal_approx(skeleton.get_bone_global_rest(skeleton.find_bone("Hips")).origin.y, 1.0), "후보 기준 자세가 다르면 모션 원본 골격 유지")
 	scene.free()
+	var reference := retained[0].instantiate()
+	var reference_rig := Binding.skeletons_in(reference)[0]
+	reference_rig.set_bone_rest(0, Transform3D(Basis(Vector3.RIGHT, PI / 2), Vector3.ZERO))
+	var changed := PackedScene.new()
+	changed.pack(reference)
+	changed.take_over_path(paths[0])
+	Binding.clear_caches()
+	scene = Binding.source_scene(library, PackedStringArray([paths[0]]))
+	skeleton = Binding.skeletons_in(scene)[0]
+	check(is_equal_approx(skeleton.get_bone_global_rest(skeleton.find_bone("Hips")).origin.y, 1.0), "same names with incompatible root bind axes are rejected as reference")
+	scene.free()
+	reference.free()
+
+
+func check_axis_spaces(root: Node3D) -> void:
+	var original := humanoid("mixamorig_", 1.0)
+	original.transform = Transform3D(Basis(Vector3.FORWARD, PI / 2), Vector3.ZERO)
+	original.set_bone_rest(0, original.transform.affine_inverse() * original.get_bone_rest(0))
+	original.reset_bone_poses()
+	var target := humanoid("", 1.0)
+	var parent := Node3D.new()
+	parent.rotation.x = PI / 2
+	root.add_child(parent)
+	parent.add_child(target)
+	target.set_bone_rest(0, parent.transform.affine_inverse() * target.get_bone_rest(0))
+	target.reset_bone_poses()
+	var bound := Binding.bind(library_for(original), target, root, original)
+	check(bound.bridge != null and bound.library.has_animation("move"), "retarget accepts different source and ancestor axis corrections")
+	if bound.bridge != null:
+		check(bound.bridge.source.get_bone_rest(0).basis.is_equal_approx(Basis.IDENTITY) and bound.bridge.target.get_bone_rest(0).basis.is_equal_approx(Basis.IDENTITY), "proxy root rests include source and target ancestor axis transforms")
+		var player := AnimationPlayer.new()
+		root.add_child(player)
+		player.root_node = player.get_path_to(root)
+		player.callback_mode_process = AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_MANUAL
+		player.add_animation_library("", bound.library)
+		player.play("move")
+		player.advance(0.4)
+		bound.bridge.update()
+		await frames()
+		var hips := target.global_transform * target.get_bone_global_pose(target.find_bone("Hips")).origin
+		var head := target.global_transform * target.get_bone_global_pose(target.find_bone("Head")).origin
+		check(head.y > hips.y and hips.y > 0.5, "retarget keeps world-space head above hips with rotated ancestors")
+		player.free()
+		bound.bridge.free()
+	var same_names := humanoid("", 1.0)
+	same_names.rotation.y = PI
+	var axis_only := Binding.bind(library_for(same_names), target, root, same_names)
+	check(axis_only.bridge != null, "matching local rests still retarget when ancestor axes differ")
+	if axis_only.bridge != null:
+		axis_only.bridge.free()
+	same_names.free()
+	var snapshot := Binding._snapshot(target).instantiate() as Skeleton3D
+	check(snapshot.transform.is_equal_approx(target.global_transform), "cached skeleton preserves ancestor transforms")
+	snapshot.free()
+	parent.free()
+	original.free()
 
 func check_skinned_bounds(root: Node3D) -> void:
 	var skeleton := Skeleton3D.new()
@@ -316,6 +375,7 @@ func run() -> void:
 	check(mixamo_roles.get("Spine") == "mixamorig_Spine" and mixamo_roles.get("Chest") == "mixamorig_Spine1" and mixamo_roles.get("UpperChest") == "mixamorig_Spine2", "척추 번호 대신 실제 계층 순서로 매핑")
 	mixamo.free()
 	await check_partial_rigs(root, original, target)
+	await check_axis_spaces(root)
 	check_structural_mapping()
 	check_source_options()
 	check_skinned_bounds(root)

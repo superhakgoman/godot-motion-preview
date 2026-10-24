@@ -11,10 +11,24 @@ var destination: Skeleton3D
 var modifier: RetargetModifier3D
 var source_names := {}
 var target_indices := {}
+var source_space := Transform3D.IDENTITY
+var destination_space := Transform3D.IDENTITY
+
+
+static func skeleton_space(skeleton: Skeleton3D) -> Transform3D:
+	var result := skeleton.transform
+	var parent := skeleton.get_parent()
+	while parent != null:
+		if parent is Node3D:
+			result = parent.transform * result
+		parent = parent.get_parent()
+	return result
 
 
 func configure(original: Skeleton3D, model: Skeleton3D, source_roles: Dictionary, target_roles: Dictionary) -> void:
 	destination = model
+	source_space = skeleton_space(original)
+	destination_space = skeleton_space(model)
 	source = _copy_skeleton(original, source_roles, source_names)
 	source.name = "Source"
 	source.modifier_callback_mode_process = Skeleton3D.MODIFIER_CALLBACK_MODE_PROCESS_MANUAL
@@ -56,12 +70,26 @@ static func _copy_skeleton(original: Skeleton3D, roles: Dictionary, names: Dicti
 				break
 		copy.add_bone(name)
 		names[original.get_bone_name(index)] = name
+	var space := skeleton_space(original)
 	for index in original.get_bone_count():
 		copy.set_bone_parent(index, original.get_bone_parent(index))
-		copy.set_bone_rest(index, original.get_bone_rest(index))
+		copy.set_bone_rest(index, space * original.get_bone_rest(index) if original.get_bone_parent(index) < 0 else original.get_bone_rest(index))
 	copy.reset_bone_poses()
 	copy.motion_scale = original.motion_scale
 	return copy
+
+
+func transform_root_track(animation: Animation, track: int) -> void:
+	for key in animation.track_get_key_count(track):
+		var value: Variant = animation.track_get_key_value(track, key)
+		match animation.track_get_type(track):
+			Animation.TYPE_POSITION_3D:
+				value = source_space.basis * value + source_space.origin / source.motion_scale
+			Animation.TYPE_ROTATION_3D:
+				value = source_space.basis.get_rotation_quaternion() * value
+			Animation.TYPE_SCALE_3D:
+				value = source_space.basis.get_scale() * value
+		animation.track_set_key_value(track, key, value)
 
 
 func reset() -> void:
@@ -81,4 +109,7 @@ func _copy_result() -> void:
 	if not is_instance_valid(destination):
 		return
 	for index in target_indices:
-		destination.set_bone_pose(index, target.get_bone_pose(target_indices[index]))
+		var pose := target.get_bone_pose(target_indices[index])
+		if destination.get_bone_parent(index) < 0:
+			pose = destination_space.affine_inverse() * pose
+		destination.set_bone_pose(index, pose)

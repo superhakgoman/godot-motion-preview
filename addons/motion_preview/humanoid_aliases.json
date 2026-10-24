@@ -75,47 +75,56 @@
     ],
     "Neck": [
       "neck",
-      "neck1"
+      "neck1",
+      "neck01"
     ],
     "Head": [
       "head"
     ],
     "Shoulder": [
       "shoulder",
-      "clavicle"
+      "clavicle",
+      "armcollarbone"
     ],
     "UpperArm": [
       "arm",
-      "upperarm"
+      "upperarm",
+      "arm1"
     ],
     "LowerArm": [
       "forearm",
-      "lowerarm"
+      "lowerarm",
+      "arm2"
     ],
     "Hand": [
       "hand",
-      "wrist"
+      "wrist",
+      "armpalm"
     ],
     "UpperLeg": [
       "upleg",
       "thigh",
-      "upperleg"
+      "upperleg",
+      "leg1"
     ],
     "LowerLeg": [
       "leg",
       "calf",
       "shin",
-      "lowerleg"
+      "lowerleg",
+      "leg2"
     ],
     "Foot": [
       "foot",
-      "ankle"
+      "ankle",
+      "legankle"
     ],
     "Toes": [
       "toebase",
       "toe",
       "toe0",
-      "ball"
+      "ball",
+      "legdigit11"
     ]
   },
   "sided_roles": [
@@ -158,5 +167,15 @@
     "Metacarpal",
     "Proximal",
     "Distal"
+  ],
+  "numbered_prefixes": [
+    "character"
+  ],
+  "numbered_fingers": [
+    "Thumb",
+    "Index",
+    "Middle",
+    "Ring",
+    "Little"
   ]
 }

@@ -112,3 +112,9 @@ See the [1.2.0 design and validation record](docs/1.2.0-api-release.md) (Korean)
 Run `python3 release.py` to generate the installation ZIP and its SHA-256 checksum together. Identical source files produce identical ZIPs regardless of modification times.
 
 When file logging is enabled, `performance.log` also records playback errors, omitted bones, and bone mappings, including model/animation paths and bone names. Events are recorded during binding and when warnings/errors occur, rather than every frame. This does not visually detect frozen limbs.
+
+### 1.2.5 retarget orientation and bone mapping fixes
+
+Retargeting includes skeleton ancestor axis/scale transforms and converts the result back to model coordinates. A reference model with incompatible root bind axes is rejected even when bone names and hierarchy match. Without compatible bind data, the preview uses source node poses for relative motion and warns that the initial pose can differ from the original animation.
+
+CAT numbered prefixes and semantic limb names, and Biped numbered fingers are recognized. Pelvis/chest hubs require matching bilateral limb connections. Ambiguous Bone001 head/accessory names remain unmapped; use a Godot BoneMap for those bones.
