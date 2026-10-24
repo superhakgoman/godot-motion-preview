@@ -22,9 +22,9 @@ def main():
         shutil.copyfile(project / "tests/motion_preview_import_probe.gd", probe / "probe.gd")
         (probe / "plugin.cfg").write_text('[plugin]\nname="Import probe"\ndescription="Test"\nauthor="Test"\nversion="1"\nscript="probe.gd"\n')
         (target / "project.godot").write_text('config_version=5\n[application]\nconfig/name="Motion Import Check"\n[editor_plugins]\nenabled=PackedStringArray("res://addons/motion_preview/plugin.cfg", "res://addons/import_probe/plugin.cfg")\n')
-        for name, importer, kind in [("legacy", "animation_library", "AnimationLibrary"), ("model", "scene", "PackedScene")]:
+        for name, importer, kind in [("legacy", "animation_library", "AnimationLibrary"), ("model", "scene", "PackedScene"), ("original_true", "animation_library", "AnimationLibrary")]:
             shutil.copyfile(args.fbx, target / (name + ".FBX"))
-            (target / (name + ".FBX.import")).write_text(f'[remap]\nimporter="{importer}"\ntype="{kind}"\n[params]\nnodes/import_as_skeleton_bones=true\nanimation/import_rest_as_RESET=false\nanimation/fps=24\nfbx/importer=0\n')
+            (target / (name + ".FBX.import")).write_text(f'[remap]\nimporter="{importer}"\ntype="{kind}"\n[params]\nnodes/import_as_skeleton_bones=true\nanimation/import_rest_as_RESET={str(name == "original_true").lower()}\nanimation/fps=24\nfbx/importer=0\n')
         command = [args.engine, "--headless", "--editor", "--path", str(target), "--quit-after", "2400", "--log-file", str(target / "editor.log")]
         try:
             result = subprocess.run(command, capture_output=True, text=True, timeout=90)

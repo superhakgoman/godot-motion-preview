@@ -211,6 +211,41 @@ func _run_rest_job() -> void:
 		_rest_result_dialog("FBX 재임포트 성공 %d개, 실패 %d개.\n%s" % [succeeded, failed.size(), "\n".join(failed.slice(0, 8))])
 
 
+func restore_reset_imports(dialog_parent: Node = null) -> void:
+	if _rest_job_running:
+		return
+	_rest_dialog_parent = weakref(dialog_parent) if is_instance_valid(dialog_parent) else null
+	var filesystem := get_editor_interface().get_resource_filesystem()
+	if filesystem.is_importing() or filesystem.is_scanning():
+		_rest_result_dialog("임포트가 끝난 후 복원을 실행해 주세요.")
+		return
+	# Disable enforcement first, or restoration would immediately be undone.
+	var enabled: bool = ProjectSettings.get_setting(ImportPolicy.SETTING, true)
+	ProjectSettings.set_setting(ImportPolicy.SETTING, false)
+	if ProjectSettings.save() != OK:
+		ProjectSettings.set_setting(ImportPolicy.SETTING, enabled)
+		_rest_result_dialog("자동 적용 옵션을 저장하지 못해 복원을 중단했습니다.")
+		return
+	_pending_rest_imports.clear()
+	_rest_bulk_requested = false
+	var result := ImportPolicy.restore_options()
+	var restored := PackedStringArray()
+	_rest_job_running = true
+	if not result.paths.is_empty():
+		filesystem.reimport_files(result.paths)
+		for path in result.paths:
+			var library := ResourceLoader.load(path, "AnimationLibrary", ResourceLoader.CACHE_MODE_IGNORE)
+			if library is AnimationLibrary:
+				restored.append(path)
+			else:
+				result.failures.append(path)
+	_rest_job_running = false
+	if not restored.is_empty() and not ImportPolicy.finish_restore(restored):
+		result.failures.append("복원 기록을 갱신하지 못했습니다. 다음 복원 시 같은 항목이 다시 처리될 수 있습니다.")
+	PerformanceLog.write("RESET import restore: %d restored | %d failures" % [restored.size(), result.failures.size()])
+	_rest_result_dialog("자동 적용을 껐습니다. 임포트 옵션 복원 %d개, 실패 %d개.\n%s" % [restored.size(), result.failures.size(), "\n".join(result.failures.slice(0, 8))])
+
+
 func _rest_result_dialog(message: String) -> void:
 	var dialog := AcceptDialog.new()
 	dialog.title = "Motion Preview — RESET 적용"

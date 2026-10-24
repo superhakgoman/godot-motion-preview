@@ -125,6 +125,8 @@ Project Settings → Addons → Motion Preview → Import → Auto Import Rest A
 
 The adjacent “기존 모션 FBX에 적용” button enables the option and reimports existing FBX AnimationLibraries, including files already configured true, to capture reference metadata. Installation does not bulk-convert existing resources. This explicit button also works when automatic enforcement is disabled.
 
+The “적용 전 설정 복원” button disables enforcement, restores only options recorded before this addon first changed them, and reimports those files. Originally enabled files and later unrelated option edits remain intact. Failed recovery records are retained. Records live in a project-specific `user://motion_preview/reset_import_backup_<project-id>.cfg`; option changes are refused if the record cannot be saved. This is not a rollback of earlier unrecorded changes or consumer/game scenes.
+
 The import plugin stores immutable skeleton topology, transforms and motion scale on RESET. Preview reconstructs the source skeleton using RESET keys and hides RESET from playable menus. Consumer-defined default RESET animations are not replaced. No temporary scene files are written. Old imported libraries need the bulk action to capture metadata.
 
 RESET records the rest pose Godot read; it cannot recover authoring bind data absent from the original file. Missing reliable reference data produces an error rather than another model/first animated pose being guessed. Standardized motion libraries must still be paired with appropriately prepared models.

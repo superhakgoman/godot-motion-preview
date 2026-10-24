@@ -234,7 +234,7 @@ func check_log_settings_button():
   if node.get_script() == import_property_script:
    import_property = node
    break
- check(import_property != null and import_property.apply_button.text == "기존 모션 FBX에 적용" and import_property.enabled_toggle.button_pressed, "프로젝트 설정에 기본 true인 자동 RESET 옵션과 일괄 적용 버튼 표시")
+ check(import_property != null and import_property.apply_button.text == "기존 모션 FBX에 적용" and import_property.restore_button.text == "적용 전 설정 복원" and import_property.enabled_toggle.button_pressed, "프로젝트 설정에 기본 true인 자동 RESET 옵션과 일괄 적용 버튼 표시")
  if import_property != null:
   import_property.enabled_toggle.set_pressed(false)
   await frames(2)

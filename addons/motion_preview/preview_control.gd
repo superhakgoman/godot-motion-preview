@@ -121,7 +121,7 @@ func get_motions() -> PackedStringArray:
 			result.append(clip_menu.get_item_text(index))
 	elif library != null:
 		for key in library.get_animation_list():
-			if key != &"RESET":
+			if key != &"RESET" and not String(key).ends_with("/RESET"):
 				result.append(String(key))
 	return result
 
