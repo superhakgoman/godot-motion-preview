@@ -104,6 +104,8 @@ func check_partial_rigs(root: Node3D, original: Skeleton3D, target: Skeleton3D) 
 	partial.free()
 
 func check_structural_mapping() -> void:
+	check(Mapping.role("Bip01 L Thigh") == "LeftUpperLeg" and Mapping.role("Bip01 R Thigh") == "RightUpperLeg", "Biped space-separated side markers")
+	check(Mapping.role("mixamorig:LeftHandIndex1") == "LeftIndexProximal", "Mixamo hand-prefixed fingers")
 	var model := humanoid("", 1.0)
 	var upper := model.find_bone("LeftUpperArm")
 	var lower := model.find_bone("LeftLowerArm")
@@ -137,6 +139,10 @@ func check_structural_mapping() -> void:
 func check_source_options() -> void:
 	var path := "res://output/motion_preview_checks/nodes_fixture.gltf"
 	var file := FileAccess.open(path, FileAccess.WRITE)
+	if file == null:
+		check(false, "fixture file could not be opened")
+		quit(1)
+		return
 	file.store_string(JSON.stringify({"asset": {"version": "2.0"}, "scene": 0,
 		"scenes": [{"nodes": [0]}], "nodes": [{"name": "Root", "children": [1]}, {"name": "Hips", "translation": [0, 1, 0]}]}))
 	file.close()
@@ -145,14 +151,20 @@ func check_source_options() -> void:
 	library.take_over_path(path)
 	for enabled in [true, false]:
 		config.set_value("params", "nodes/import_as_skeleton_bones", enabled)
-		config.save(path + ".import")
+		if config.save(path + ".import") != OK:
+			check(false, "could not save test import settings")
+			quit(1)
+			return
 		var scene := Binding.source_scene(library)
 		var count := Binding.skeletons_in(scene).size() if scene != null else -1
 		check(count == (1 if enabled else 0), "메시 없는 원본의 노드→본 임포트 설정 반영: " + str(enabled))
 		if scene != null:
 			scene.free()
 	config.set_value("params", "nodes/import_as_skeleton_bones", true)
-	config.save(path + ".import")
+	if config.save(path + ".import") != OK:
+		check(false, "could not save test import settings")
+		quit(1)
+		return
 	var paths := PackedStringArray()
 	var retained: Array[PackedScene] = []
 	for height in [2.0, 3.0]:
@@ -212,6 +224,7 @@ func check_skinned_bounds(root: Node3D) -> void:
 	skeleton.set_bone_rest(0, rest)
 	skeleton.reset_bone_poses()
 	root.add_child(skeleton)
+	skeleton.position = Vector3(10, 0, 0)
 	var box := BoxMesh.new()
 	box.size = Vector3(1, 0.5, 3)
 	for influences in [4, 8]:
@@ -234,9 +247,16 @@ func check_skinned_bounds(root: Node3D) -> void:
 		mesh.skeleton = NodePath("../BoundsSkeleton")
 		root.add_child(mesh)
 		var actual := Bounds.mesh_bounds(mesh)
-		var expected := rest * box.get_aabb()
+		var expected := skeleton.global_transform * rest * box.get_aabb()
 		check(actual.position.is_equal_approx(expected.position) and actual.size.is_equal_approx(expected.size), "Skin으로 세워진 메시의 현재 범위: %d개 가중치" % influences)
 		mesh.free()
+	var primitive := MeshInstance3D.new()
+	primitive.mesh = box
+	primitive.skin = skeleton.create_skin_from_rest_transforms()
+	primitive.skeleton = NodePath("../BoundsSkeleton")
+	root.add_child(primitive)
+	check(Bounds.mesh_bounds(primitive).size.is_equal_approx(box.get_aabb().size), "primitive mesh with skin uses safe bounds")
+	primitive.free()
 	skeleton.free()
 
 func library_for(skeleton: Skeleton3D) -> AnimationLibrary:
@@ -264,9 +284,18 @@ func frames() -> void:
 		await process_frame
 
 func _initialize() -> void:
+	# Runtime script errors must not leave CI waiting forever.
+	create_timer(60.0).timeout.connect(func():
+		push_error("Retarget test timed out")
+		quit(1))
 	run.call_deferred()
 
 func run() -> void:
+	var output_error := DirAccess.make_dir_recursive_absolute("res://output/motion_preview_checks")
+	if output_error != OK:
+		push_error("Cannot create test output directory: " + error_string(output_error))
+		quit(1)
+		return
 	var root := Node3D.new()
 	root.process_mode = Node.PROCESS_MODE_DISABLED
 	get_root().add_child(root)
@@ -339,8 +368,12 @@ func run() -> void:
 	check(Mapping.validate(custom, custom_roles).is_empty() and custom_roles.Hips == "joint_Hips", "저장된 BoneMap이 이름 추정보다 우선")
 	var map_config := ConfigFile.new()
 	map_config.set_value("params", "_subresources", {"nodes": {"PATH:Skeleton": {"retarget/bone_map": map}}})
-	map_config.save("res://output/motion_preview_checks/map_fixture.glb.import")
-	check(Mapping.import_map("res://output/motion_preview_checks/map_fixture.glb").get_skeleton_bone_name("Hips") == "joint_Hips", "Godot 고급 임포트 BoneMap 읽기")
+	if map_config.save("res://output/motion_preview_checks/map_fixture.glb.import") != OK:
+		check(false, "could not save test import settings")
+		quit(1)
+		return
+	var imported_map := Mapping.import_map("res://output/motion_preview_checks/map_fixture.glb")
+	check(imported_map != null and imported_map.get_skeleton_bone_name("Hips") == "joint_Hips", "Godot 고급 임포트 BoneMap 읽기")
 	custom.set_bone_parent(custom.find_bone("joint_LeftHand"), custom.find_bone("joint_Hips"))
 	check(not Mapping.validate(custom, custom_roles).is_empty(), "이름이 맞아도 잘못된 계층은 거절")
 	check(Mapping.unique_roles(PackedStringArray(["LeftArm", "upper_arm.L"]))["LeftUpperArm"] == "", "모호한 중복 이름은 거절")

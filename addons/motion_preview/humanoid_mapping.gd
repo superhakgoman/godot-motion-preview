@@ -38,6 +38,8 @@ static func role(bone: String) -> String:
 		if name.begins_with(prefix):
 			name = name.trim_prefix(prefix)
 			break
+	# Canonicalize whitespace before detecting Biped side markers.
+	name = name.strip_edges().replace(" ", "_")
 	var side := ""
 	for key in rules.sides:
 		var options: Dictionary = rules.sides[key]
@@ -74,6 +76,8 @@ static func role(bone: String) -> String:
 			result = key
 	if not result.is_empty():
 		return side + result if result in rules.sided_roles and not side.is_empty() else ("" if result in rules.sided_roles else result)
+	if name.begins_with("hand"):
+		name = name.trim_prefix("hand")
 	for finger in rules.fingers:
 		for alias in rules.fingers[finger]:
 			if name.begins_with(alias) and not side.is_empty():

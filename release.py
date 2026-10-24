@@ -2,6 +2,7 @@
 
 import argparse
 import configparser
+import hashlib
 from pathlib import Path
 import re
 import zipfile
@@ -38,7 +39,13 @@ def main() -> None:
     archive = args.output_dir / f"{name}-{version}.zip"
     with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as bundle:
         for path, entry in files:
-            bundle.write(path, entry)
+            info = zipfile.ZipInfo(entry, date_time=(2020, 1, 1, 0, 0, 0))
+            info.compress_type = zipfile.ZIP_DEFLATED
+            info.create_system = 3
+            info.external_attr = 0o100644 << 16
+            bundle.writestr(info, path.read_bytes())
+    digest = hashlib.sha256(archive.read_bytes()).hexdigest()
+    archive.with_suffix(".sha256").write_text(f"{digest}  {archive.name}\n", encoding="utf-8")
     print(f"생성: {archive}")
 
 

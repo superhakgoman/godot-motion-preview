@@ -108,3 +108,5 @@ godot --headless --path . --quit-after 1200 --script tests/motion_preview_api.gd
 ```
 
 See the [1.2.0 design and validation record](docs/1.2.0-api-release.md) (Korean).
+
+Run `python3 release.py` to generate the installation ZIP and its SHA-256 checksum together. Identical source files produce identical ZIPs regardless of modification times.

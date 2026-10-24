@@ -231,6 +231,8 @@ func load_model(path: String) -> bool:
 
 func clear_preview() -> void:
 	_clear_model()
+	if status != null:
+		_set_status("")
 	if clip_menu != null:
 		_fill_clips()
 	motions_changed.emit()
@@ -265,7 +267,10 @@ func set_prepared_target(root: Node3D, animation_root: Node, libraries: Dictiona
 			var clip := source.get_animation(key).duplicate(true) as Animation
 			for track in range(clip.get_track_count() - 1, -1, -1):
 				var path := clip.track_get_path(track)
-				var destination := animation_root.get_node_or_null(NodePath(path.get_concatenated_names())) if not path.is_absolute() else null
+				var node_path := path.get_concatenated_names()
+				var destination: Node = null
+				if not path.is_absolute():
+					destination = animation_root if node_path.is_empty() else animation_root.get_node_or_null(NodePath(node_path))
 				if not Binding._is_bone_track(clip, track):
 					clip.remove_track(track)
 				elif path.is_absolute() or not destination is Skeleton3D or not (destination == root or root.is_ancestor_of(destination)) or destination.find_bone(path.get_subname(0)) < 0:
@@ -452,9 +457,11 @@ func refresh_models(paths: PackedStringArray) -> void:
 	model_paths = paths
 	if _prepared or not is_node_ready():
 		return
+	var previous := _playback_snapshot()
 	_load_source_skeleton()
 	_loaded_model_path = ""
 	update_models(paths)
+	_restore_playback(previous)
 
 
 func update_models(paths: PackedStringArray) -> void:
@@ -704,10 +711,26 @@ func _library_changed() -> void:
 	Binding.clear_caches()
 	if _prepared:
 		return
+	var previous := _playback_snapshot()
 	_fill_clips()
 	_load_source_skeleton()
 	if is_instance_valid(player):
 		_bind_library()
+	_restore_playback(previous)
+
+
+func _playback_snapshot() -> Dictionary:
+	return {"motion": get_selected_motion(), "time": get_time(), "playing": is_playing()}
+
+
+func _restore_playback(previous: Dictionary) -> void:
+	if not has_motion() or String(previous.motion) not in get_motions():
+		return
+	if get_selected_motion() != previous.motion:
+		select_motion(previous.motion)
+	seek_time(previous.time)
+	if previous.playing:
+		play()
 
 
 func _clips_changed(_name: StringName) -> void:

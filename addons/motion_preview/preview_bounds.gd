@@ -24,7 +24,9 @@ static func mesh_bounds(mesh: MeshInstance3D) -> AABB:
 		var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
 		var bones: PackedInt32Array = arrays[Mesh.ARRAY_BONES] if arrays[Mesh.ARRAY_BONES] != null else PackedInt32Array()
 		var weights: PackedFloat32Array = arrays[Mesh.ARRAY_WEIGHTS] if arrays[Mesh.ARRAY_WEIGHTS] != null else PackedFloat32Array()
-		var influences := 8 if mesh.mesh.surface_get_format(surface) & Mesh.ARRAY_FLAG_USE_8_BONE_WEIGHTS else 4
+		var influences := bones.size() / maxi(vertices.size(), 1)
+		if influences not in [4, 8]:
+			influences = 4
 		var has_weights := bones.size() == vertices.size() * influences and weights.size() == bones.size()
 		for vertex in vertices.size():
 			var point := vertices[vertex]
@@ -34,7 +36,7 @@ static func mesh_bounds(mesh: MeshInstance3D) -> AABB:
 					var index := vertex * influences + influence
 					if weights[index] > 0 and bones[index] >= 0 and bones[index] < transforms.size():
 						point += (transforms[bones[index]] * vertices[vertex]) * weights[index]
-			point = mesh.global_transform * point
+			point = (skeleton.global_transform if has_weights else mesh.global_transform) * point
 			bounds = bounds.expand(point) if found else AABB(point, Vector3.ZERO)
 			found = true
 	return bounds if found else mesh.global_transform * mesh.get_aabb()
