@@ -75,6 +75,25 @@ func run() -> void:
 	preview.target_changed.connect(func(): notices[&"target_changed"] += 1)
 	preview.load_failed.connect(func(_message): notices[&"load_failed"] += 1)
 	root.add_child(preview)
+	check(not preview.view_container.mouse_force_pass_scroll_events, "preview consumes scrolling inside inspector")
+	var initial_distance: float = preview.distance
+	var wheel := InputEventMouseButton.new()
+	wheel.button_index = MOUSE_BUTTON_WHEEL_UP
+	wheel.pressed = true
+	preview._view_input(wheel)
+	check(preview.distance < initial_distance and not preview.auto_frame, "wheel zooms in and disables automatic framing")
+	wheel.button_index = MOUSE_BUTTON_WHEEL_DOWN
+	preview._view_input(wheel)
+	check(is_equal_approx(preview.distance, initial_distance), "opposite wheel restores zoom")
+	var pan := InputEventPanGesture.new()
+	pan.delta = Vector2(0, 1)
+	preview._view_input(pan)
+	check(preview.distance > initial_distance, "trackpad scroll zooms out")
+	var magnify := InputEventMagnifyGesture.new()
+	magnify.factor = 2.0
+	var before_pinch: float = preview.distance
+	preview._view_input(magnify)
+	check(is_equal_approx(preview.distance, before_pinch / 2.0), "trackpad pinch zooms in")
 	check(not preview.has_motion() and preview.get_time() == 0.0 and preview.get_duration() == 0.0, "empty ready and empty getters")
 	preview.play()
 	preview.seek_time(1.0)

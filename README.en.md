@@ -34,7 +34,7 @@ The plugin's controls currently use Korean labels; their meanings are provided b
 3. The first animation plays on a loop. If the library contains multiple animations, use the clip menu to switch between them.
 
 - Use **일시정지 / 재생** (Pause / Play), the timeline slider, and playback speeds from **0.1× to 3×** to inspect motions. Moving the timeline slider pauses playback.
-- Drag to rotate the view and scroll to zoom. **시점 초기화** (Reset view) returns to a view that fits the whole model.
+- Inside the preview, drag to rotate and use the mouse wheel, trackpad scroll, or pinch to zoom. **시점 초기화** (Reset view) returns to a view that fits the whole model.
 - Enable **원본 머티리얼** (Original materials) to display the model's materials instead of the matte materials used to make poses easier to see.
 - The last model selection is retained when switching libraries or reopening the editor.
 - The model list refreshes after models are added, moved, or reimported. Use **↻** to refresh it manually.

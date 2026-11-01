@@ -366,6 +366,7 @@ func _build_ui() -> void:
 	view_container.custom_minimum_size = Vector2(0, 320)
 	view_container.stretch = true
 	view_container.mouse_filter = Control.MOUSE_FILTER_STOP
+	view_container.mouse_force_pass_scroll_events = false
 	view_container.gui_input.connect(_view_input)
 	view_container.resized.connect(_resize_view)
 	view_container.mouse_exited.connect(func(): dragging = false)
@@ -782,15 +783,25 @@ func _update_camera() -> void:
 	camera.look_at(target, Vector3.UP)
 
 
+func _zoom_view(factor: float) -> void:
+	if not is_finite(factor) or factor <= 0.0:
+		return
+	auto_frame = false
+	distance = clampf(distance * factor, 0.01, 10000.0)
+	_update_camera()
+
+
 func _view_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton:
 		if event.button_index == MOUSE_BUTTON_LEFT:
 			dragging = event.pressed
 		if event.pressed and event.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN]:
-			auto_frame = false
-			distance *= 0.9 if event.button_index == MOUSE_BUTTON_WHEEL_UP else 1.1
-			distance = clampf(distance, 0.01, 10000.0)
-			_update_camera()
+			var amount: float = event.factor if event.factor > 0.0 else 1.0
+			_zoom_view(pow(0.9, amount if event.button_index == MOUSE_BUTTON_WHEEL_UP else -amount))
+	if event is InputEventPanGesture:
+		_zoom_view(exp(clampf(event.delta.y * 0.1, -10.0, 10.0)))
+	if event is InputEventMagnifyGesture and event.factor > 0.0:
+		_zoom_view(1.0 / event.factor)
 	if event is InputEventMouseMotion and dragging:
 		auto_frame = false
 		orbit.x -= event.relative.x * 0.01

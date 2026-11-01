@@ -25,6 +25,56 @@ func check_initial_framing(preview: Node, label: String):
  var initial_distance: float = preview.distance
  preview._frame_model()
  check(is_equal_approx(initial_distance, preview.distance), label)
+func send_preview_input(preview: Node, event: InputEvent):
+ var position: Vector2 = preview.view_container.get_global_rect().get_center()
+ if event is InputEventMouse:
+  event.position = position
+  event.global_position = position
+ elif event is InputEventGesture:
+  event.position = position
+ preview.get_viewport().push_input(event, true)
+ await frames(2)
+func check_inspector_zoom(preview: Node):
+ var scroll := preview.get_parent()
+ while scroll != null and not scroll is ScrollContainer:
+  scroll = scroll.get_parent()
+ if scroll != null:
+  scroll.ensure_control_visible(preview.view_container)
+ await frames(5)
+ var before_scroll: int = scroll.scroll_vertical if scroll != null else -1
+ var initial: float = preview.distance
+ var wheel := InputEventMouseButton.new()
+ wheel.button_index = MOUSE_BUTTON_WHEEL_UP
+ wheel.pressed = true
+ await send_preview_input(preview, wheel)
+ check(preview.distance < initial and not preview.auto_frame, "실제 인스펙터 입력 경로에서 휠 확대")
+ check(scroll != null and scroll.scroll_vertical == before_scroll, "재생창 휠 입력은 상위 인스펙터를 스크롤하지 않음")
+ wheel.button_index = MOUSE_BUTTON_WHEEL_DOWN
+ await send_preview_input(preview, wheel)
+ check(is_equal_approx(preview.distance, initial), "실제 인스펙터 입력 경로에서 휠 축소")
+ var pan := InputEventPanGesture.new()
+ pan.delta = Vector2(0, 1)
+ await send_preview_input(preview, pan)
+ check(preview.distance > initial and scroll.scroll_vertical == before_scroll, "트랙패드 스크롤은 인스펙터 이동 없이 줌 처리")
+ var magnify := InputEventMagnifyGesture.new()
+ magnify.factor = 2.0
+ var before_pinch: float = preview.distance
+ await send_preview_input(preview, magnify)
+ check(is_equal_approx(preview.distance, before_pinch / 2.0), "실제 인스펙터 입력 경로에서 핀치 확대")
+ var button := InputEventMouseButton.new()
+ button.button_index = MOUSE_BUTTON_LEFT
+ button.pressed = true
+ await send_preview_input(preview, button)
+ var old_orbit: Vector2 = preview.orbit
+ var motion := InputEventMouseMotion.new()
+ motion.relative = Vector2(20, 10)
+ motion.button_mask = MOUSE_BUTTON_MASK_LEFT
+ await send_preview_input(preview, motion)
+ button.pressed = false
+ await send_preview_input(preview, button)
+ check(not preview.orbit.is_equal_approx(old_orbit) and not preview.dragging, "줌 이후 실제 드래그 회전과 버튼 해제")
+ preview.reset_view()
+ check(preview.auto_frame and is_equal_approx(preview.distance, initial), "줌 이후 시점 초기화는 전체 모델 구도로 복귀")
 func model_fits(preview: Node) -> bool:
  var mesh = preview.model.find_child("Body", true, false)
  var bounds: AABB = mesh.global_transform * mesh.get_aabb()
@@ -339,6 +389,7 @@ func run():
   preview = find_preview(interface.get_inspector())
   check(preview != null and preview.player != null and not preview.play_button.disabled, "에디터 모델 선택 후 재생")
   if preview != null and preview.player != null:
+   await check_inspector_zoom(preview)
    var previous_model = preview.model
    preview.update_models(preview.model_paths)
    check(preview.model == previous_model, "목록 갱신 시 변경 없는 모델 인스턴스 재사용")
