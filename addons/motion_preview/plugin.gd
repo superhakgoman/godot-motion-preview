@@ -30,6 +30,7 @@ var _rest_dialog_parent: WeakRef
 func _enter_tree() -> void:
 	PerformanceLog.register_setting()
 	ImportPolicy.register_setting()
+	preload("source_reference.gd").register_setting()
 	_rest_starting = true
 	_finish_rest_startup.call_deferred()
 	rest_import_plugin = RestImportPlugin.new()

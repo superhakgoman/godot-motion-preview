@@ -30,8 +30,8 @@ static func _snapshot(skeleton: Skeleton3D) -> PackedScene:
 	copy.name = skeleton.name
 	copy.transform = preload("native_retarget.gd").skeleton_space(skeleton)
 	copy.motion_scale = skeleton.motion_scale
-	if skeleton.has_meta("_motion_preview_rest_mode"):
-		copy.set_meta("_motion_preview_rest_mode", skeleton.get_meta("_motion_preview_rest_mode"))
+	for key in ["_motion_preview_rest_mode", "_motion_preview_reference_path", "_motion_preview_reference_error"]:
+		if skeleton.has_meta(key): copy.set_meta(key, skeleton.get_meta(key))
 	for index in skeleton.get_bone_count():
 		copy.add_bone(skeleton.get_bone_name(index))
 	for index in skeleton.get_bone_count():
@@ -54,13 +54,21 @@ static func source_scene(source: AnimationLibrary) -> Node:
 		var from_reset := preload("rest_pose.gd").skeleton_from_reset(source)
 		if from_reset == null:
 			PerformanceLog.diagnostic("reset_unusable", {"source": source.resource_path, "reason": "missing or invalid imported skeleton metadata; reimport using the RESET button"})
+		if from_reset != null:
+			var reference := preload("source_reference.gd").from_config(source, from_reset)
+			if reference != null:
+				from_reset.free()
+				return reference
 		return from_reset
 	var path := source.resource_path
 	if path.is_empty():
 		return null
 	var file_path := path.get_slice("::", 0)
 	var settings := FileAccess.get_file_as_string(file_path + ".import") if FileAccess.file_exists(file_path + ".import") else ""
-	var cache_key := var_to_str([path, FileAccess.get_modified_time(file_path) if FileAccess.file_exists(file_path) else 0, settings])
+	var reference_path := preload("source_reference.gd").configured_path(source)
+	var reference_settings := FileAccess.get_file_as_string(reference_path + ".import") if FileAccess.file_exists(reference_path + ".import") else ""
+	var cache_key := var_to_str([path, FileAccess.get_modified_time(file_path) if FileAccess.file_exists(file_path) else 0, settings,
+		reference_path, FileAccess.get_modified_time(reference_path) if FileAccess.file_exists(reference_path) else 0, reference_settings])
 	if _source_cache.has(cache_key):
 		PerformanceLog.write("source skeleton: cache hit | " + path)
 		var cached: PackedScene = _source_cache[cache_key]
@@ -70,6 +78,11 @@ static func source_scene(source: AnimationLibrary) -> Node:
 	var rigs: Array[Skeleton3D] = []
 	if scene != null:
 		rigs = skeletons_in(scene)
+	if rigs.size() == 1:
+		var reference := preload("source_reference.gd").from_config(source, rigs[0])
+		if reference != null:
+			scene.free()
+			return reference
 	var packed: PackedScene = _snapshot(rigs[0]) if rigs.size() == 1 else null
 	if scene != null and packed == null:
 		return scene
@@ -164,7 +177,12 @@ static func bind(source: AnimationLibrary, skeleton: Skeleton3D, root: Node, sou
 					var dst_parent_name := skeleton.get_bone_name(dst_parent) if dst_parent >= 0 else ""
 					if src_parent_name != dst_parent_name or not source_skeleton.get_bone_rest(src).is_equal_approx(skeleton.get_bone_rest(dst)):
 						needs_retarget = true
+		if preload("source_reference.gd").matches_target(source_skeleton, skeleton):
+			needs_retarget = false
 		omitted_bones[name] = missing
+		if source_skeleton != null and source_skeleton.has_meta("_motion_preview_reference_error"):
+			errors[name] = "미리보기 불가: " + String(source_skeleton.get_meta("_motion_preview_reference_error"))
+			continue
 		if needs_retarget and source_skeleton.get_meta("_motion_preview_rest_mode", "") == "node_pose":
 			errors[name] = "미리보기 불가: 모션의 기준 자세를 확인할 수 없습니다. 프로젝트 설정의 Motion Preview → Import에서 기존 모션 FBX에 RESET을 적용해 주세요."
 			continue
