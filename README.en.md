@@ -10,7 +10,7 @@ A Godot editor plugin that previews an animation library (`AnimationLibrary`) on
 |---|---|
 | ![Inspector preview of a waving animation](docs/images/motion-preview-wave.png) | ![Inspector preview of a walking animation](docs/images/motion-preview-walk.png) |
 
-Demo Inspector captures from an earlier release. Current model selection uses FBX and GLB. [View the full editor screenshot](docs/images/motion-preview-editor.png)
+[View the full editor screenshot](docs/images/motion-preview-editor.png)
 
 ## Installing and using it in a game project
 
@@ -21,7 +21,7 @@ Demo Inspector captures from an earlier release. Current model selection uses FB
 3. In Godot, open **Project → Project Settings → Plugins** and enable **Motion Preview**.
 4. Wait for Godot to finish importing your models and animations.
 
-Version 1.3.0 enables automatic `Import Rest as RESET` for FBX AnimationLibraries by default. Existing files are bulk-converted only through the explicit button. Consumers enumerating clips or assuming a single clip should distinguish `RESET` and namespaced `library/RESET` entries from playable motions. Opt out with the project setting `auto_import_rest_as_reset`.
+The plugin enables automatic `Import Rest as RESET` for FBX AnimationLibraries by default. Existing files are bulk-converted only through the explicit button. Consumers enumerating clips or assuming a single clip should distinguish `RESET` and namespaced `library/RESET` entries from playable motions. Opt out with the project setting `auto_import_rest_as_reset`.
 
 Disable the plugin or close the editor before updating or removing it. To update, replace the existing plugin folder with the new version.
 
@@ -44,6 +44,8 @@ The plugin's controls currently use Korean labels; their meanings are provided b
 Models are discovered from **FBX and GLB files** only. `.tscn`, `.scn`, and `.gltf` are excluded from model discovery and the normal model loader. Models must have no attached scripts, a mesh, and either one skeleton or a connected `Skeleton3D → RetargetModifier3D → Skeleton3D` pair. The existing modifier transfers motion from the driving skeleton to the deformation skeleton. Independent multiple rigs and props without skeletons are excluded. Godot's imported model and retarget settings are preserved. The last model resource is retained across inspector changes; no temporary scene files are generated.
 
 Humanoid motions can be automatically previewed on models with different skeletons. Models missing some bones play the applicable motion. A **yellow warning** identifies adjusted or omitted motion; a **red error** indicates that playback is unavailable.
+
+If the motion provider supplies a separate reference model, see the [reference model settings](addons/motion_preview/source_reference.md) (Korean).
 
 If automatic mapping fails, check `SkeletonProfileHumanoid` and `BoneMap` in Godot's Advanced Import Settings. Retargeting may require the original motion FBX, GLB or glTF.
 
@@ -99,9 +101,9 @@ This creates `output/motion_preview-<version>.zip`. The ZIP contains only the pl
 
 Extract the ZIP and move the resulting `motion_preview` folder into your chosen Godot project's `addons/` folder. Check that the resulting path is `addons/motion_preview/plugin.cfg`, then enable the plugin. Disable the plugin or close the editor before replacing an existing installation.
 
-## Embedding the preview in another editor (1.2.0)
+## Embedding the preview in another editor
 
-See the [public API, adapter contract and 1.1.2 migration guide](addons/motion_preview/API.md). Embed the existing camera/playback/scrubbing implementation through methods and signals. A separate prepared-target boundary supports adapter-sanitized multi-skeleton appearances with existing engine RetargetModifier nodes, while preserving the general loader's safety policy.
+See the [public API and adapter contract](addons/motion_preview/API.md). Embed the existing camera/playback/scrubbing implementation through methods and signals. A separate prepared-target boundary supports adapter-sanitized multi-skeleton appearances with existing engine RetargetModifier nodes, while preserving the general loader's safety policy.
 
 Run the generated-fixture API checks:
 
@@ -109,19 +111,17 @@ Run the generated-fixture API checks:
 godot --headless --path . --quit-after 1200 --script tests/motion_preview_api.gd
 ```
 
-See the [1.2.0 design and validation record](docs/1.2.0-api-release.md) (Korean).
-
 Run `python3 release.py` to generate the installation ZIP and its SHA-256 checksum together. Identical source files produce identical ZIPs regardless of modification times.
 
 When file logging is enabled, `performance.log` also records playback errors, omitted bones, and bone mappings, including model/animation paths and bone names. Events are recorded during binding and when warnings/errors occur, rather than every frame. This does not visually detect frozen limbs.
 
-### 1.2.5 retarget orientation and bone mapping fixes
+### Retargeting and bone mapping
 
-Retargeting includes skeleton ancestor axis/scale transforms and converts the result back to model coordinates. Automatic reference-model discovery and the relative-node-pose fallback from 1.2.5 were removed in 1.3.0.
+Retargeting includes skeleton ancestor axis/scale transforms and converts the result back to model coordinates.
 
 CAT numbered prefixes and semantic limb names, and Biped numbered fingers are recognized. Pelvis/chest hubs require matching bilateral limb connections. Ambiguous Bone001 head/accessory names remain unmapped; use a Godot BoneMap for those bones.
 
-### 1.3.0 automatic RESET preservation for animation FBX files
+### RESET preservation for animation FBX files
 
 Project Settings → Addons → Motion Preview → Import → Auto Import Rest As Reset defaults to true (`addons/motion_preview/import/auto_import_rest_as_reset`). After an FBX AnimationLibrary is imported, the addon enables `animation/import_rest_as_RESET` if necessary and reimports it once. The enabled policy overrides a per-file false. Scene imports and other file extensions are excluded. Opting out stops enforcement without reverting settings already applied.
 
